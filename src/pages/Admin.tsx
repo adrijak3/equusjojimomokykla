@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { WEEKDAYS_LT, formatTime, isValidTime, calculateSubPriceByType, expiryFromPurchase, formatDateISO, LESSON_TYPE_LABEL, type LessonType } from "@/lib/equus";
-import { Plus, Trash2, Check, X, Inbox, Users, CalendarCog, MessageSquare, Star, Clock, Wallet, KeyRound, Link2, AlertCircle, BarChart3 } from "lucide-react";
+import { Plus, Trash2, Check, X, Inbox, Users, CalendarCog, MessageSquare, Star, Clock, Wallet, KeyRound, Link2, AlertCircle, BarChart3, Pencil, ListTree } from "lucide-react";
+import { TimeInput } from "@/components/TimeInput";
 
 interface TimeSlot { id: string; day_of_week: number; slot_time: string; max_capacity: number; one_off_date: string | null; }
 interface CancelReq {
@@ -149,11 +150,34 @@ function ScheduleTab() {
     toast.success("Pašalinta"); load();
   };
 
+  const updateCapacity = async (id: string, newCap: number) => {
+    if (!Number.isFinite(newCap) || newCap < 1 || newCap > 50) {
+      toast.error("Talpa turi būti 1–50"); return;
+    }
+    const { error } = await supabase.from("time_slots").update({ max_capacity: newCap }).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Talpa atnaujinta"); load();
+  };
+
+  const updateSlotTime = async (id: string, newT: string) => {
+    if (!isValidTime(newT)) { toast.error("Įveskite laiką formatu HH:MM"); return; }
+    const { error } = await supabase.from("time_slots").update({ slot_time: newT }).eq("id", id);
+    if (error) {
+      toast.error(error.code === "23505" ? "Toks laikas jau egzistuoja" : error.message);
+      return;
+    }
+    toast.success("Laikas atnaujintas"); load();
+  };
+
   return (
     <div>
       <div className="flex justify-end mb-4">
         <Button variant="gold" onClick={() => setOpen(true)}><Plus className="w-4 h-4" /> Naujas laikas</Button>
       </div>
+
+      <p className="text-xs text-muted-foreground mb-3 italic">
+        Talpą ir laiką gali keisti tiesiogiai — paspausk pieštuko ikoną prie reikšmės.
+      </p>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[1,2,3,4,5,6,7].map((dow) => (
@@ -161,18 +185,13 @@ function ScheduleTab() {
             <h3 className="font-display text-lg text-gold mb-3">{WEEKDAYS_LT[dow - 1]}</h3>
             <ul className="space-y-1.5">
               {slots.filter((s) => s.day_of_week === dow).map((s) => (
-                <li key={s.id} className="flex items-center justify-between text-sm px-2 py-1.5 rounded hover:bg-gold/5">
-                  <span className="tabular-nums">
-                    {formatTime(s.slot_time)}
-                    {s.one_off_date && (
-                      <span className="ml-1.5 text-[10px] text-blush">({s.one_off_date})</span>
-                    )}
-                  </span>
-                  <span className="text-xs text-muted-foreground">cap {s.max_capacity}</span>
-                  <button onClick={() => remove(s.id)} className="text-muted-foreground hover:text-destructive">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </li>
+                <SlotRow
+                  key={s.id}
+                  slot={s}
+                  onCapacity={(n) => updateCapacity(s.id, n)}
+                  onTime={(t) => updateSlotTime(s.id, t)}
+                  onRemove={() => remove(s.id)}
+                />
               ))}
               {slots.filter((s) => s.day_of_week === dow).length === 0 && (
                 <li className="text-xs text-muted-foreground italic">Nėra</li>
@@ -206,19 +225,12 @@ function ScheduleTab() {
             )}
             <div>
               <Label>Laikas</Label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                placeholder="pvz. 17:30"
-                value={newTime}
-                onChange={(e) => setNewTime(e.target.value)}
-                className="tabular-nums"
-              />
-              <p className="text-[11px] text-muted-foreground mt-1">Formatas HH:MM (24h), pvz. 09:15, 17:00</p>
+              <TimeInput value={newTime} onChange={setNewTime} />
+              <p className="text-[11px] text-muted-foreground mt-1">Įvesk skaitmenis — dvitaškis pridedamas automatiškai (pvz. 1730 → 17:30).</p>
             </div>
             <div>
               <Label>Talpa</Label>
-              <Input type="number" min={1} max={20} value={newCap} onChange={(e) => setNewCap(parseInt(e.target.value) || 5)} />
+              <Input type="number" min={1} max={50} value={newCap} onChange={(e) => setNewCap(parseInt(e.target.value) || 5)} />
             </div>
           </div>
           <DialogFooter>
@@ -228,6 +240,77 @@ function ScheduleTab() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/* ---------- SLOT ROW (inline-editable time + capacity) ---------- */
+function SlotRow({
+  slot, onCapacity, onTime, onRemove,
+}: {
+  slot: TimeSlot;
+  onCapacity: (n: number) => void | Promise<void>;
+  onTime: (t: string) => void | Promise<void>;
+  onRemove: () => void;
+}) {
+  const [editTime, setEditTime] = useState(false);
+  const [editCap, setEditCap] = useState(false);
+  const [t, setT] = useState(slot.slot_time.slice(0, 5));
+  const [c, setC] = useState(slot.max_capacity);
+
+  useEffect(() => { setT(slot.slot_time.slice(0, 5)); }, [slot.slot_time]);
+  useEffect(() => { setC(slot.max_capacity); }, [slot.max_capacity]);
+
+  const saveTime = async () => { await onTime(t); setEditTime(false); };
+  const saveCap = async () => { await onCapacity(c); setEditCap(false); };
+
+  return (
+    <li className="flex items-center justify-between gap-2 text-sm px-2 py-1.5 rounded hover:bg-gold/5">
+      {editTime ? (
+        <div className="flex items-center gap-1">
+          <TimeInput value={t} onChange={setT} className="h-7 w-20 text-xs" />
+          <button onClick={saveTime} className="text-gold hover:text-gold/80" title="Išsaugoti">
+            <Check className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setT(slot.slot_time.slice(0, 5)); setEditTime(false); }} className="text-muted-foreground hover:text-destructive" title="Atšaukti">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setEditTime(true)} className="tabular-nums inline-flex items-center gap-1 hover:text-gold group">
+          {formatTime(slot.slot_time)}
+          {slot.one_off_date && (
+            <span className="ml-1 text-[10px] text-blush">({slot.one_off_date})</span>
+          )}
+          <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+        </button>
+      )}
+
+      {editCap ? (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number" min={1} max={50}
+            value={c}
+            onChange={(e) => setC(parseInt(e.target.value) || 0)}
+            className="h-7 w-14 text-xs tabular-nums"
+          />
+          <button onClick={saveCap} className="text-gold hover:text-gold/80" title="Išsaugoti">
+            <Check className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setC(slot.max_capacity); setEditCap(false); }} className="text-muted-foreground hover:text-destructive" title="Atšaukti">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setEditCap(true)} className="text-xs text-muted-foreground hover:text-gold inline-flex items-center gap-1 group">
+          cap {slot.max_capacity}
+          <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+        </button>
+      )}
+
+      <button onClick={onRemove} className="text-muted-foreground hover:text-destructive" title="Pašalinti">
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </li>
   );
 }
 
@@ -455,6 +538,28 @@ function SubsTab() {
   const [purchaseDate, setPurchaseDate] = useState(formatDateISO(new Date()));
   const [paid, setPaid] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [detailSub, setDetailSub] = useState<Sub | null>(null);
+  const [usageMap, setUsageMap] = useState<Record<string, number>>({});
+
+  // Compute actual usage = count of bookings attributed to each sub (active/completed and counts_in_subscription)
+  useEffect(() => {
+    if (subs.length === 0) { setUsageMap({}); return; }
+    (async () => {
+      const ids = subs.map((s) => s.id);
+      const { data } = await supabase
+        .from("bookings")
+        .select("subscription_id, status, counts_in_subscription")
+        .in("subscription_id", ids);
+      const m: Record<string, number> = {};
+      (data ?? []).forEach((b: any) => {
+        if (!b.subscription_id) return;
+        if (b.counts_in_subscription === false) return;
+        if (b.status === "cancelled") return;
+        m[b.subscription_id] = (m[b.subscription_id] ?? 0) + 1;
+      });
+      setUsageMap(m);
+    })();
+  }, [subs]);
 
   const load = async () => {
     const [p, s] = await Promise.all([
@@ -569,11 +674,32 @@ function SubsTab() {
                   <p className="text-sm text-muted-foreground italic">Nėra abonementų</p>
                 ) : (
                   <ul className="space-y-2">
-                    {us.map((s) => (
+                    {us.map((s) => {
+                      const actual = usageMap[s.id] ?? 0;
+                      const mismatch = actual !== s.lessons_used;
+                      return (
                       <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-1.5 border-b border-gold/5 last:border-0">
-                        <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold">
-                          {s.lessons_used}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold">
+                            {s.lessons_used}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
+                          </button>
+                          {mismatch && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-blush/10 text-blush border border-blush/30 tabular-nums"
+                              title={`Tikras pamokų skaičius prisegtas šiam abonementui: ${actual}. Saugomas: ${s.lessons_used}.`}
+                            >
+                              tikras: {actual}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setDetailSub(s)}
+                            className="text-[11px] px-1.5 py-0.5 rounded border border-gold/20 text-gold hover:bg-gold/10 inline-flex items-center gap-1"
+                            title="Žiūrėti, kurios pamokos įskaičiuotos"
+                          >
+                            <ListTree className="w-3 h-3" /> detalės
+                          </button>
+                        </div>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-gold/10 text-gold border border-gold/20">
                           {LESSON_TYPE_LABEL[(s.lesson_type ?? "sportine") as LessonType] ?? s.lesson_type}
                         </span>
@@ -588,7 +714,7 @@ function SubsTab() {
                           </button>
                         </div>
                       </li>
-                    ))}
+                    );})}
                   </ul>
                 )}
               </div>
@@ -644,7 +770,109 @@ function SubsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {detailSub && (
+        <SubDetailDialog
+          sub={detailSub}
+          userName={profiles.find((p) => p.id === detailSub.user_id)?.full_name ?? "—"}
+          onClose={() => setDetailSub(null)}
+          onChanged={load}
+        />
+      )}
     </div>
+  );
+}
+
+/* ---------- SUBSCRIPTION DETAIL DIALOG ---------- */
+function SubDetailDialog({
+  sub, userName, onClose, onChanged,
+}: { sub: Sub; userName: string; onClose: () => void; onChanged: () => void }) {
+  const [rows, setRows] = useState<{ id: string; slot_date: string; slot_time: string; status: string; counts_in_subscription: boolean }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase.from("bookings")
+      .select("id, slot_date, slot_time, status, counts_in_subscription")
+      .eq("subscription_id", sub.id)
+      .order("slot_date", { ascending: false });
+    setRows((data ?? []) as any);
+    setLoading(false);
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [sub.id]);
+
+  const detach = async (bookingId: string) => {
+    if (!confirm("Pašalinti šią pamoką iš abonimento? (Pati pamoka nebus ištrinta — tik atkabinta.)")) return;
+    const { error } = await supabase.from("bookings")
+      .update({ subscription_id: null } as any).eq("id", bookingId);
+    if (error) { toast.error(error.message); return; }
+    // Decrement stored counter if it's > 0
+    if (sub.lessons_used > 0) {
+      await supabase.from("subscriptions")
+        .update({ lessons_used: sub.lessons_used - 1 }).eq("id", sub.id);
+    }
+    toast.success("Atkabinta");
+    load();
+    onChanged();
+  };
+
+  const counted = rows.filter((r) => r.status !== "cancelled" && r.counts_in_subscription !== false);
+  const cancelled = rows.filter((r) => r.status === "cancelled" || r.counts_in_subscription === false);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="bg-gradient-card border-gold/20 max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-display text-xl text-gradient-gold">{userName} · abonimento detalės</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div className="rounded-md bg-gold/5 border border-gold/15 px-3 py-2 tabular-nums">
+            <div>Saugomas: <span className="text-gold">{sub.lessons_used}/{sub.lessons_total}</span></div>
+            <div>Tikras (iš pamokų sąrašo): <span className="text-gold">{counted.length}/{sub.lessons_total}</span></div>
+            <div className="text-xs text-muted-foreground mt-1">{sub.purchase_date} → {sub.expires_at}</div>
+          </div>
+
+          {loading ? (
+            <p className="text-muted-foreground italic">Kraunama…</p>
+          ) : (
+            <>
+              <div>
+                <h4 className="text-xs uppercase tracking-wider text-gold/70 mb-1.5">Įskaičiuotos pamokos ({counted.length})</h4>
+                {counted.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">Nėra</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {counted.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-gold/5">
+                        <span className="tabular-nums">{r.slot_date} · {formatTime(r.slot_time)}</span>
+                        <button onClick={() => detach(r.id)} className="text-[11px] text-muted-foreground hover:text-destructive">Atkabinti</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {cancelled.length > 0 && (
+                <div>
+                  <h4 className="text-xs uppercase tracking-wider text-blush/70 mb-1.5">Atšauktos / nesiskaičiuoja ({cancelled.length})</h4>
+                  <ul className="space-y-1">
+                    {cancelled.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-gold/5">
+                        <span className="tabular-nums text-muted-foreground">{r.slot_date} · {formatTime(r.slot_time)} <span className="text-[10px]">({r.status})</span></span>
+                        <button onClick={() => detach(r.id)} className="text-[11px] text-muted-foreground hover:text-destructive">Atkabinti</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Uždaryti</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
