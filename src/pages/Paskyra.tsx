@@ -412,15 +412,33 @@ export default function Paskyra() {
             )}
           </Section>
 
-          <Section title="Visos praėjusios" icon={<Clock className="w-4 h-4" />}>
-            {past.length === 0 ? (
-              <Empty text="Dar nebuvo treniruočių" />
-            ) : (
-              <ul className="divide-y divide-gold/5 max-h-96 overflow-auto">
-                {past.slice().reverse().map((b) => <BookingRow key={b.id} b={b} past />)}
-              </ul>
-            )}
-          </Section>
+          {(() => {
+            const pastAttended = past.filter((b) => b.status === "active" || b.status === "completed");
+            const pastCancelled = bookings.filter((b) => b.status === "cancelled");
+            return (
+              <>
+                <Section title="Įvykusios treniruotės" icon={<CheckCircle2 className="w-4 h-4" />}>
+                  {pastAttended.length === 0 ? (
+                    <Empty text="Dar nebuvo įvykusių treniruočių" />
+                  ) : (
+                    <ul className="divide-y divide-gold/5 max-h-96 overflow-auto">
+                      {pastAttended.slice().reverse().map((b) => <BookingRow key={b.id} b={b} past />)}
+                    </ul>
+                  )}
+                </Section>
+
+                <Section title="Atšauktos treniruotės" icon={<XCircle className="w-4 h-4" />}>
+                  {pastCancelled.length === 0 ? (
+                    <Empty text="Atšauktų treniruočių nėra" />
+                  ) : (
+                    <ul className="divide-y divide-gold/5 max-h-96 overflow-auto">
+                      {pastCancelled.slice().reverse().map((b) => <BookingRow key={b.id} b={b} past />)}
+                    </ul>
+                  )}
+                </Section>
+              </>
+            );
+          })()}
         </TabsContent>
 
         {/* SUBSCRIPTIONS */}
