@@ -684,6 +684,15 @@ export default function Grafikas() {
                         )}
                       </button>
                     </div>
+                    {isAdmin && !isPast && (
+                      <button
+                        type="button"
+                        onClick={() => { setCustomSlotDialog({ date }); setCustomSlotTime(""); setCustomSlotCap(6); }}
+                        className="mt-2 w-full inline-flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider text-gold/80 hover:text-gold border border-dashed border-gold/30 hover:border-gold/60 rounded px-1.5 py-1 transition-colors"
+                        title="Pridėti naują laiką šiai dienai"
+                      >
+                        <Plus className="w-3 h-3" /> Naujas laikas
+                    </div>
                   </div>
 
                   {/* Weekend banners — Saturday only */}
