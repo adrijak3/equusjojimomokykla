@@ -525,6 +525,7 @@ function SubsTab() {
   const [subs, setSubs] = useState<Sub[]>([]);
   const [filter, setFilter] = useState("");
   const [showOnlyUnpaid, setShowOnlyUnpaid] = useState(false);
+  const [subFilter, setSubFilter] = useState<"all" | "with" | "without">("all");
 
   // Add dialog
   const [open, setOpen] = useState(false);
