@@ -538,6 +538,28 @@ function SubsTab() {
   const [purchaseDate, setPurchaseDate] = useState(formatDateISO(new Date()));
   const [paid, setPaid] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [detailSub, setDetailSub] = useState<Sub | null>(null);
+  const [usageMap, setUsageMap] = useState<Record<string, number>>({});
+
+  // Compute actual usage = count of bookings attributed to each sub (active/completed and counts_in_subscription)
+  useEffect(() => {
+    if (subs.length === 0) { setUsageMap({}); return; }
+    (async () => {
+      const ids = subs.map((s) => s.id);
+      const { data } = await supabase
+        .from("bookings")
+        .select("subscription_id, status, counts_in_subscription")
+        .in("subscription_id", ids);
+      const m: Record<string, number> = {};
+      (data ?? []).forEach((b: any) => {
+        if (!b.subscription_id) return;
+        if (b.counts_in_subscription === false) return;
+        if (b.status === "cancelled") return;
+        m[b.subscription_id] = (m[b.subscription_id] ?? 0) + 1;
+      });
+      setUsageMap(m);
+    })();
+  }, [subs]);
 
   const load = async () => {
     const [p, s] = await Promise.all([
@@ -652,11 +674,32 @@ function SubsTab() {
                   <p className="text-sm text-muted-foreground italic">Nėra abonementų</p>
                 ) : (
                   <ul className="space-y-2">
-                    {us.map((s) => (
+                    {us.map((s) => {
+                      const actual = usageMap[s.id] ?? 0;
+                      const mismatch = actual !== s.lessons_used;
+                      return (
                       <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-1.5 border-b border-gold/5 last:border-0">
-                        <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold">
-                          {s.lessons_used}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold">
+                            {s.lessons_used}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
+                          </button>
+                          {mismatch && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-blush/10 text-blush border border-blush/30 tabular-nums"
+                              title={`Tikras pamokų skaičius prisegtas šiam abonementui: ${actual}. Saugomas: ${s.lessons_used}.`}
+                            >
+                              tikras: {actual}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setDetailSub(s)}
+                            className="text-[11px] px-1.5 py-0.5 rounded border border-gold/20 text-gold hover:bg-gold/10 inline-flex items-center gap-1"
+                            title="Žiūrėti, kurios pamokos įskaičiuotos"
+                          >
+                            <ListTree className="w-3 h-3" /> detalės
+                          </button>
+                        </div>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-gold/10 text-gold border border-gold/20">
                           {LESSON_TYPE_LABEL[(s.lesson_type ?? "sportine") as LessonType] ?? s.lesson_type}
                         </span>
@@ -671,7 +714,7 @@ function SubsTab() {
                           </button>
                         </div>
                       </li>
-                    ))}
+                    );})}
                   </ul>
                 )}
               </div>
