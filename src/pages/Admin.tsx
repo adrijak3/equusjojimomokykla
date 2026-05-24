@@ -73,7 +73,7 @@ export default function Admin() {
       </header>
 
       <Tabs defaultValue="schedule">
-        <TabsList className="grid grid-cols-4 sm:grid-cols-8 w-full bg-background/50 mb-6 h-auto">
+        <TabsList className="grid grid-cols-3 sm:grid-cols-6 w-full bg-background/50 mb-6 h-auto">
           <TabsTrigger value="schedule" className="gap-1.5 text-xs sm:text-sm"><CalendarCog className="w-4 h-4" /> <span className="hidden sm:inline">Tvarkaraštis</span></TabsTrigger>
           <TabsTrigger value="permanent" className="gap-1.5 text-xs sm:text-sm"><Star className="w-4 h-4" /> <span className="hidden sm:inline">Nuolatiniai</span></TabsTrigger>
           <TabsTrigger value="cancels" className="gap-1.5 text-xs sm:text-sm relative">
@@ -83,15 +83,13 @@ export default function Admin() {
             )}
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-1.5 text-xs sm:text-sm"><Users className="w-4 h-4" /> <span className="hidden sm:inline">Vartotojai</span></TabsTrigger>
-          <TabsTrigger value="subs" className="gap-1.5 text-xs sm:text-sm"><Wallet className="w-4 h-4" /> <span className="hidden sm:inline">Abonimentai</span></TabsTrigger>
+          <TabsTrigger value="subs" className="gap-1.5 text-xs sm:text-sm"><Wallet className="w-4 h-4" /> <span className="hidden sm:inline">Abonimentas</span></TabsTrigger>
           <TabsTrigger value="messages" className="gap-1.5 text-xs sm:text-sm relative">
             <MessageSquare className="w-4 h-4" /> <span className="hidden sm:inline">Žinutės</span>
             {alerts.unread > 0 && (
               <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-gold text-[9px] text-background flex items-center justify-center font-bold">{alerts.unread}</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="links" className="gap-1.5 text-xs sm:text-sm"><Link2 className="w-4 h-4" /> <span className="hidden sm:inline">Profiliai</span></TabsTrigger>
-          <TabsTrigger value="stats" className="gap-1.5 text-xs sm:text-sm"><BarChart3 className="w-4 h-4" /> <span className="hidden sm:inline">Statistika</span></TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule"><ScheduleTab /></TabsContent>
@@ -100,8 +98,6 @@ export default function Admin() {
         <TabsContent value="users"><UsersTab /></TabsContent>
         <TabsContent value="subs"><SubsTab /></TabsContent>
         <TabsContent value="messages"><MessagesTab /></TabsContent>
-        <TabsContent value="links"><ProfileLinksTab /></TabsContent>
-        <TabsContent value="stats"><StatsTab /></TabsContent>
       </Tabs>
     </div>
   );
