@@ -1242,6 +1242,46 @@ export default function Grafikas() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Admin: custom one-off time slot */}
+      <Dialog open={!!customSlotDialog} onOpenChange={(o) => !o && setCustomSlotDialog(null)}>
+        <DialogContent className="bg-gradient-card border-gold/20">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-gradient-gold flex items-center gap-2">
+              <Plus className="w-5 h-5 text-gold" /> Naujas laikas
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              {customSlotDialog && customSlotDialog.date.toLocaleDateString("lt-LT", { weekday: "long", day: "numeric", month: "long" })}
+              <span className="block text-[11px] italic mt-1">
+                Vienkartinis laikas — bus rodomas tik šią dieną.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="cs-time">Laikas (HH:MM)</Label>
+              <TimeInput id="cs-time" value={customSlotTime} onChange={setCustomSlotTime} autoFocus />
+            </div>
+            <div>
+              <Label htmlFor="cs-cap">Talpa</Label>
+              <Input
+                id="cs-cap"
+                type="number"
+                min={1}
+                max={30}
+                value={customSlotCap}
+                onChange={(e) => setCustomSlotCap(parseInt(e.target.value) || 1)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCustomSlotDialog(null)}>Atšaukti</Button>
+            <Button variant="gold" onClick={adminCreateCustomSlot} disabled={customBusy}>
+              {customBusy ? "Pridedama…" : "Pridėti"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
