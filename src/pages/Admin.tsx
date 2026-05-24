@@ -617,10 +617,10 @@ function SubsTab() {
 
   const filteredProfiles = profiles.filter((p) => {
     if (filter && !p.full_name.toLowerCase().includes(filter.toLowerCase())) return false;
-    if (showOnlyUnpaid) {
-      const us = subs.filter((s) => s.user_id === p.id);
-      if (!us.some((s) => !s.paid)) return false;
-    }
+    const us = subs.filter((s) => s.user_id === p.id);
+    if (showOnlyUnpaid && !us.some((s) => !s.paid)) return false;
+    if (subFilter === "with" && us.length === 0) return false;
+    if (subFilter === "without" && us.length > 0) return false;
     return true;
   });
 
@@ -633,6 +633,15 @@ function SubsTab() {
           onChange={(e) => setFilter(e.target.value)}
           className="max-w-xs"
         />
+        <select
+          value={subFilter}
+          onChange={(e) => setSubFilter(e.target.value as any)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="all">Visi vartotojai</option>
+          <option value="with">Su abonimentu</option>
+          <option value="without">Be abonimento</option>
+        </select>
         <label className="flex items-center gap-1.5 text-sm cursor-pointer">
           <input type="checkbox" checked={showOnlyUnpaid} onChange={(e) => setShowOnlyUnpaid(e.target.checked)} className="accent-gold" />
           Tik su neapmokėtais
