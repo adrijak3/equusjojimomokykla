@@ -770,7 +770,109 @@ function SubsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {detailSub && (
+        <SubDetailDialog
+          sub={detailSub}
+          userName={profiles.find((p) => p.id === detailSub.user_id)?.full_name ?? "—"}
+          onClose={() => setDetailSub(null)}
+          onChanged={load}
+        />
+      )}
     </div>
+  );
+}
+
+/* ---------- SUBSCRIPTION DETAIL DIALOG ---------- */
+function SubDetailDialog({
+  sub, userName, onClose, onChanged,
+}: { sub: Sub; userName: string; onClose: () => void; onChanged: () => void }) {
+  const [rows, setRows] = useState<{ id: string; slot_date: string; slot_time: string; status: string; counts_in_subscription: boolean }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase.from("bookings")
+      .select("id, slot_date, slot_time, status, counts_in_subscription")
+      .eq("subscription_id", sub.id)
+      .order("slot_date", { ascending: false });
+    setRows((data ?? []) as any);
+    setLoading(false);
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [sub.id]);
+
+  const detach = async (bookingId: string) => {
+    if (!confirm("Pašalinti šią pamoką iš abonimento? (Pati pamoka nebus ištrinta — tik atkabinta.)")) return;
+    const { error } = await supabase.from("bookings")
+      .update({ subscription_id: null } as any).eq("id", bookingId);
+    if (error) { toast.error(error.message); return; }
+    // Decrement stored counter if it's > 0
+    if (sub.lessons_used > 0) {
+      await supabase.from("subscriptions")
+        .update({ lessons_used: sub.lessons_used - 1 }).eq("id", sub.id);
+    }
+    toast.success("Atkabinta");
+    load();
+    onChanged();
+  };
+
+  const counted = rows.filter((r) => r.status !== "cancelled" && r.counts_in_subscription !== false);
+  const cancelled = rows.filter((r) => r.status === "cancelled" || r.counts_in_subscription === false);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="bg-gradient-card border-gold/20 max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-display text-xl text-gradient-gold">{userName} · abonimento detalės</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div className="rounded-md bg-gold/5 border border-gold/15 px-3 py-2 tabular-nums">
+            <div>Saugomas: <span className="text-gold">{sub.lessons_used}/{sub.lessons_total}</span></div>
+            <div>Tikras (iš pamokų sąrašo): <span className="text-gold">{counted.length}/{sub.lessons_total}</span></div>
+            <div className="text-xs text-muted-foreground mt-1">{sub.purchase_date} → {sub.expires_at}</div>
+          </div>
+
+          {loading ? (
+            <p className="text-muted-foreground italic">Kraunama…</p>
+          ) : (
+            <>
+              <div>
+                <h4 className="text-xs uppercase tracking-wider text-gold/70 mb-1.5">Įskaičiuotos pamokos ({counted.length})</h4>
+                {counted.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">Nėra</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {counted.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-gold/5">
+                        <span className="tabular-nums">{r.slot_date} · {formatTime(r.slot_time)}</span>
+                        <button onClick={() => detach(r.id)} className="text-[11px] text-muted-foreground hover:text-destructive">Atkabinti</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {cancelled.length > 0 && (
+                <div>
+                  <h4 className="text-xs uppercase tracking-wider text-blush/70 mb-1.5">Atšauktos / nesiskaičiuoja ({cancelled.length})</h4>
+                  <ul className="space-y-1">
+                    {cancelled.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-gold/5">
+                        <span className="tabular-nums text-muted-foreground">{r.slot_date} · {formatTime(r.slot_time)} <span className="text-[10px]">({r.status})</span></span>
+                        <button onClick={() => detach(r.id)} className="text-[11px] text-muted-foreground hover:text-destructive">Atkabinti</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Uždaryti</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
