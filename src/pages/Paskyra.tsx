@@ -859,8 +859,9 @@ function BookingRow({ b, past }: { b: Booking; past?: boolean }) {
   );
 }
 
-function SubscriptionCard({ s, onMarkPaid, onDelete, onEditLessons }: { s: Subscription; onMarkPaid?: (id: string) => void; onDelete?: (id: string) => void; onEditLessons?: (s: Subscription) => void }) {
-  const remaining = s.lessons_total - s.lessons_used;
+function SubscriptionCard({ s, effectiveUsed, onMarkPaid, onDelete, onEditLessons }: { s: Subscription; effectiveUsed?: number; onMarkPaid?: (id: string) => void; onDelete?: (id: string) => void; onEditLessons?: (s: Subscription) => void }) {
+  const used = effectiveUsed ?? s.lessons_used;
+  const remaining = s.lessons_total - used;
   const expired = new Date(s.expires_at) < new Date();
   const empty = remaining <= 0;
   return (
