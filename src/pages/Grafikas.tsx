@@ -114,6 +114,12 @@ export default function Grafikas() {
   const [newNoteLabel, setNewNoteLabel] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
 
+  // Admin: custom one-off time slot
+  const [customSlotDialog, setCustomSlotDialog] = useState<{ date: Date } | null>(null);
+  const [customSlotTime, setCustomSlotTime] = useState("");
+  const [customSlotCap, setCustomSlotCap] = useState(6);
+  const [customBusy, setCustomBusy] = useState(false);
+
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const weekEnd = days[6];
 
