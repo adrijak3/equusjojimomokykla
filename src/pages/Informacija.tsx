@@ -22,7 +22,7 @@ export default function Informacija() {
       <header className="text-center space-y-3">
         <h1 className="text-3xl md:text-4xl font-display text-gradient-gold">Informacija</h1>
         <p className="text-sm md:text-base text-muted-foreground max-w-2xl mx-auto">
-          Svarbi informacija apie sutartį ir balnojimo tvarką — peržiūrėk prieš pirmą treniruotę.
+          Svarbi informacija apie sutartį ir balnojimo tvarką.
         </p>
       </header>
 
@@ -39,7 +39,7 @@ export default function Informacija() {
           </div>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-5">
           <div className="flex flex-wrap items-center gap-3">
             <Button asChild variant="gold">
               <a href={SUTARTIS_URL} target="_blank" rel="noopener noreferrer">
@@ -53,22 +53,6 @@ export default function Informacija() {
                 Atsisiųsti PDF
               </a>
             </Button>
-          </div>
-
-          <div className="rounded-md overflow-hidden border border-gold/15 bg-background/40">
-            <object
-              data={SUTARTIS_URL}
-              type="application/pdf"
-              className="w-full h-[70vh] min-h-[500px]"
-              aria-label="Sutarties peržiūra"
-            >
-              <div className="p-6 text-sm text-muted-foreground text-center">
-                Naršyklė neparodo PDF. {" "}
-                <a href={SUTARTIS_URL} target="_blank" rel="noopener noreferrer" className="text-gold underline">
-                  Atidaryti naujame lange
-                </a>.
-              </div>
-            </object>
           </div>
         </div>
       </section>
