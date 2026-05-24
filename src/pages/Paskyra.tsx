@@ -20,6 +20,7 @@ interface Booking {
   slot_time: string;
   status: string;
   counts_in_subscription: boolean;
+  subscription_id?: string | null;
   horse_name?: string | null;
 }
 interface Subscription {
