@@ -453,7 +453,12 @@ export default function Paskyra() {
           ) : (
             <div className="grid sm:grid-cols-2 gap-4">
               {subs.map((s) => {
-                const remaining = s.lessons_total - s.lessons_used;
+                const actualUsed = bookings.filter((b) =>
+                  b.subscription_id === s.id &&
+                  b.status !== "cancelled" &&
+                  b.counts_in_subscription !== false,
+                ).length;
+                const remaining = s.lessons_total - actualUsed;
                 const expDays = Math.ceil((new Date(s.expires_at).getTime() - Date.now()) / 86400000);
                 const lowRemaining = remaining <= 1 || (expDays <= 7 && expDays >= 0);
                 return (
@@ -463,7 +468,7 @@ export default function Paskyra() {
                         {remaining <= 1 ? "Liko ≤1 treniruotė" : `Baigiasi po ${expDays} d.`}
                       </div>
                     )}
-                    <SubscriptionCard s={s} onMarkPaid={markSubPaid} onDelete={deleteSub} onEditLessons={editSubLessons} />
+                    <SubscriptionCard s={s} effectiveUsed={actualUsed} onMarkPaid={markSubPaid} onDelete={deleteSub} onEditLessons={editSubLessons} />
                   </div>
                 );
               })}
