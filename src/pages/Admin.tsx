@@ -225,19 +225,12 @@ function ScheduleTab() {
             )}
             <div>
               <Label>Laikas</Label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                placeholder="pvz. 17:30"
-                value={newTime}
-                onChange={(e) => setNewTime(e.target.value)}
-                className="tabular-nums"
-              />
-              <p className="text-[11px] text-muted-foreground mt-1">Formatas HH:MM (24h), pvz. 09:15, 17:00</p>
+              <TimeInput value={newTime} onChange={setNewTime} />
+              <p className="text-[11px] text-muted-foreground mt-1">Įvesk skaitmenis — dvitaškis pridedamas automatiškai (pvz. 1730 → 17:30).</p>
             </div>
             <div>
               <Label>Talpa</Label>
-              <Input type="number" min={1} max={20} value={newCap} onChange={(e) => setNewCap(parseInt(e.target.value) || 5)} />
+              <Input type="number" min={1} max={50} value={newCap} onChange={(e) => setNewCap(parseInt(e.target.value) || 5)} />
             </div>
           </div>
           <DialogFooter>
@@ -247,6 +240,77 @@ function ScheduleTab() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/* ---------- SLOT ROW (inline-editable time + capacity) ---------- */
+function SlotRow({
+  slot, onCapacity, onTime, onRemove,
+}: {
+  slot: TimeSlot;
+  onCapacity: (n: number) => void | Promise<void>;
+  onTime: (t: string) => void | Promise<void>;
+  onRemove: () => void;
+}) {
+  const [editTime, setEditTime] = useState(false);
+  const [editCap, setEditCap] = useState(false);
+  const [t, setT] = useState(slot.slot_time.slice(0, 5));
+  const [c, setC] = useState(slot.max_capacity);
+
+  useEffect(() => { setT(slot.slot_time.slice(0, 5)); }, [slot.slot_time]);
+  useEffect(() => { setC(slot.max_capacity); }, [slot.max_capacity]);
+
+  const saveTime = async () => { await onTime(t); setEditTime(false); };
+  const saveCap = async () => { await onCapacity(c); setEditCap(false); };
+
+  return (
+    <li className="flex items-center justify-between gap-2 text-sm px-2 py-1.5 rounded hover:bg-gold/5">
+      {editTime ? (
+        <div className="flex items-center gap-1">
+          <TimeInput value={t} onChange={setT} className="h-7 w-20 text-xs" />
+          <button onClick={saveTime} className="text-gold hover:text-gold/80" title="Išsaugoti">
+            <Check className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setT(slot.slot_time.slice(0, 5)); setEditTime(false); }} className="text-muted-foreground hover:text-destructive" title="Atšaukti">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setEditTime(true)} className="tabular-nums inline-flex items-center gap-1 hover:text-gold group">
+          {formatTime(slot.slot_time)}
+          {slot.one_off_date && (
+            <span className="ml-1 text-[10px] text-blush">({slot.one_off_date})</span>
+          )}
+          <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+        </button>
+      )}
+
+      {editCap ? (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number" min={1} max={50}
+            value={c}
+            onChange={(e) => setC(parseInt(e.target.value) || 0)}
+            className="h-7 w-14 text-xs tabular-nums"
+          />
+          <button onClick={saveCap} className="text-gold hover:text-gold/80" title="Išsaugoti">
+            <Check className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setC(slot.max_capacity); setEditCap(false); }} className="text-muted-foreground hover:text-destructive" title="Atšaukti">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setEditCap(true)} className="text-xs text-muted-foreground hover:text-gold inline-flex items-center gap-1 group">
+          cap {slot.max_capacity}
+          <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+        </button>
+      )}
+
+      <button onClick={onRemove} className="text-muted-foreground hover:text-destructive" title="Pašalinti">
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </li>
   );
 }
 
