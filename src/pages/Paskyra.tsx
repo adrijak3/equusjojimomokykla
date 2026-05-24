@@ -20,6 +20,7 @@ interface Booking {
   slot_time: string;
   status: string;
   counts_in_subscription: boolean;
+  subscription_id?: string | null;
   horse_name?: string | null;
 }
 interface Subscription {
@@ -453,7 +454,12 @@ export default function Paskyra() {
           ) : (
             <div className="grid sm:grid-cols-2 gap-4">
               {subs.map((s) => {
-                const remaining = s.lessons_total - s.lessons_used;
+                const actualUsed = bookings.filter((b) =>
+                  b.subscription_id === s.id &&
+                  b.status !== "cancelled" &&
+                  b.counts_in_subscription !== false,
+                ).length;
+                const remaining = s.lessons_total - actualUsed;
                 const expDays = Math.ceil((new Date(s.expires_at).getTime() - Date.now()) / 86400000);
                 const lowRemaining = remaining <= 1 || (expDays <= 7 && expDays >= 0);
                 return (
@@ -463,7 +469,7 @@ export default function Paskyra() {
                         {remaining <= 1 ? "Liko ≤1 treniruotė" : `Baigiasi po ${expDays} d.`}
                       </div>
                     )}
-                    <SubscriptionCard s={s} onMarkPaid={markSubPaid} onDelete={deleteSub} onEditLessons={editSubLessons} />
+                    <SubscriptionCard s={s} effectiveUsed={actualUsed} onMarkPaid={markSubPaid} onDelete={deleteSub} onEditLessons={editSubLessons} />
                   </div>
                 );
               })}
@@ -853,8 +859,9 @@ function BookingRow({ b, past }: { b: Booking; past?: boolean }) {
   );
 }
 
-function SubscriptionCard({ s, onMarkPaid, onDelete, onEditLessons }: { s: Subscription; onMarkPaid?: (id: string) => void; onDelete?: (id: string) => void; onEditLessons?: (s: Subscription) => void }) {
-  const remaining = s.lessons_total - s.lessons_used;
+function SubscriptionCard({ s, effectiveUsed, onMarkPaid, onDelete, onEditLessons }: { s: Subscription; effectiveUsed?: number; onMarkPaid?: (id: string) => void; onDelete?: (id: string) => void; onEditLessons?: (s: Subscription) => void }) {
+  const used = effectiveUsed ?? s.lessons_used;
+  const remaining = s.lessons_total - used;
   const expired = new Date(s.expires_at) < new Date();
   const empty = remaining <= 0;
   return (
@@ -871,11 +878,11 @@ function SubscriptionCard({ s, onMarkPaid, onDelete, onEditLessons }: { s: Subsc
             className="text-3xl font-display text-gradient-gold tabular-nums hover:opacity-80 transition-opacity"
             title="Pakeisti treniruočių skaičių"
           >
-            {s.lessons_used}/{s.lessons_total}
+            {used}/{s.lessons_total}
           </button>
         ) : (
           <span className="text-3xl font-display text-gradient-gold tabular-nums">
-            {s.lessons_used}/{s.lessons_total}
+            {used}/{s.lessons_total}
           </span>
         )}
         {s.paid ? (

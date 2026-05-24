@@ -24,10 +24,21 @@ export function TimeInput({ value, onChange, placeholder = "pvz. 17:30", classNa
   }, [value]);
 
   const format = (raw: string): string => {
-    // Keep only digits
-    const digits = raw.replace(/\D/g, "").slice(0, 4);
-    if (digits.length <= 2) return digits;
-    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+    // Allow only digits and a single ":". User types the colon manually.
+    let s = raw.replace(/[^\d:]/g, "");
+    // Keep only first colon
+    const firstColon = s.indexOf(":");
+    if (firstColon !== -1) {
+      s = s.slice(0, firstColon + 1) + s.slice(firstColon + 1).replace(/:/g, "");
+    }
+    // Cap lengths: HH (2) : MM (2)
+    if (firstColon === -1) {
+      s = s.slice(0, 2);
+    } else {
+      const [h, m = ""] = s.split(":");
+      s = `${h.slice(0, 2)}:${m.slice(0, 2)}`;
+    }
+    return s;
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

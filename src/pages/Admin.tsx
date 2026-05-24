@@ -73,7 +73,7 @@ export default function Admin() {
       </header>
 
       <Tabs defaultValue="schedule">
-        <TabsList className="grid grid-cols-4 sm:grid-cols-8 w-full bg-background/50 mb-6 h-auto">
+        <TabsList className="grid grid-cols-3 sm:grid-cols-6 w-full bg-background/50 mb-6 h-auto">
           <TabsTrigger value="schedule" className="gap-1.5 text-xs sm:text-sm"><CalendarCog className="w-4 h-4" /> <span className="hidden sm:inline">Tvarkaraštis</span></TabsTrigger>
           <TabsTrigger value="permanent" className="gap-1.5 text-xs sm:text-sm"><Star className="w-4 h-4" /> <span className="hidden sm:inline">Nuolatiniai</span></TabsTrigger>
           <TabsTrigger value="cancels" className="gap-1.5 text-xs sm:text-sm relative">
@@ -83,15 +83,13 @@ export default function Admin() {
             )}
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-1.5 text-xs sm:text-sm"><Users className="w-4 h-4" /> <span className="hidden sm:inline">Vartotojai</span></TabsTrigger>
-          <TabsTrigger value="subs" className="gap-1.5 text-xs sm:text-sm"><Wallet className="w-4 h-4" /> <span className="hidden sm:inline">Abonimentai</span></TabsTrigger>
+          <TabsTrigger value="subs" className="gap-1.5 text-xs sm:text-sm"><Wallet className="w-4 h-4" /> <span className="hidden sm:inline">Abonimentas</span></TabsTrigger>
           <TabsTrigger value="messages" className="gap-1.5 text-xs sm:text-sm relative">
             <MessageSquare className="w-4 h-4" /> <span className="hidden sm:inline">Žinutės</span>
             {alerts.unread > 0 && (
               <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-gold text-[9px] text-background flex items-center justify-center font-bold">{alerts.unread}</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="links" className="gap-1.5 text-xs sm:text-sm"><Link2 className="w-4 h-4" /> <span className="hidden sm:inline">Profiliai</span></TabsTrigger>
-          <TabsTrigger value="stats" className="gap-1.5 text-xs sm:text-sm"><BarChart3 className="w-4 h-4" /> <span className="hidden sm:inline">Statistika</span></TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule"><ScheduleTab /></TabsContent>
@@ -100,8 +98,6 @@ export default function Admin() {
         <TabsContent value="users"><UsersTab /></TabsContent>
         <TabsContent value="subs"><SubsTab /></TabsContent>
         <TabsContent value="messages"><MessagesTab /></TabsContent>
-        <TabsContent value="links"><ProfileLinksTab /></TabsContent>
-        <TabsContent value="stats"><StatsTab /></TabsContent>
       </Tabs>
     </div>
   );
@@ -529,6 +525,7 @@ function SubsTab() {
   const [subs, setSubs] = useState<Sub[]>([]);
   const [filter, setFilter] = useState("");
   const [showOnlyUnpaid, setShowOnlyUnpaid] = useState(false);
+  const [subFilter, setSubFilter] = useState<"all" | "with" | "without">("all");
 
   // Add dialog
   const [open, setOpen] = useState(false);
@@ -620,10 +617,10 @@ function SubsTab() {
 
   const filteredProfiles = profiles.filter((p) => {
     if (filter && !p.full_name.toLowerCase().includes(filter.toLowerCase())) return false;
-    if (showOnlyUnpaid) {
-      const us = subs.filter((s) => s.user_id === p.id);
-      if (!us.some((s) => !s.paid)) return false;
-    }
+    const us = subs.filter((s) => s.user_id === p.id);
+    if (showOnlyUnpaid && !us.some((s) => !s.paid)) return false;
+    if (subFilter === "with" && us.length === 0) return false;
+    if (subFilter === "without" && us.length > 0) return false;
     return true;
   });
 
@@ -636,6 +633,15 @@ function SubsTab() {
           onChange={(e) => setFilter(e.target.value)}
           className="max-w-xs"
         />
+        <select
+          value={subFilter}
+          onChange={(e) => setSubFilter(e.target.value as any)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="all">Visi vartotojai</option>
+          <option value="with">Su abonimentu</option>
+          <option value="without">Be abonimento</option>
+        </select>
         <label className="flex items-center gap-1.5 text-sm cursor-pointer">
           <input type="checkbox" checked={showOnlyUnpaid} onChange={(e) => setShowOnlyUnpaid(e.target.checked)} className="accent-gold" />
           Tik su neapmokėtais
@@ -680,15 +686,15 @@ function SubsTab() {
                       return (
                       <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-1.5 border-b border-gold/5 last:border-0">
                         <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold">
-                            {s.lessons_used}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
+                          <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold" title="Įvykusios treniruotės / iš viso">
+                            {actual}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
                           </button>
                           {mismatch && (
                             <span
                               className="text-[10px] px-1.5 py-0.5 rounded bg-blush/10 text-blush border border-blush/30 tabular-nums"
-                              title={`Tikras pamokų skaičius prisegtas šiam abonementui: ${actual}. Saugomas: ${s.lessons_used}.`}
+                              title={`Saugomas skaitiklis duomenų bazėje: ${s.lessons_used}`}
                             >
-                              tikras: {actual}
+                              saugoma: {s.lessons_used}
                             </span>
                           )}
                           <button
@@ -697,7 +703,7 @@ function SubsTab() {
                             className="text-[11px] px-1.5 py-0.5 rounded border border-gold/20 text-gold hover:bg-gold/10 inline-flex items-center gap-1"
                             title="Žiūrėti, kurios pamokos įskaičiuotos"
                           >
-                            <ListTree className="w-3 h-3" /> detalės
+                            <ListTree className="w-3 h-3" /> Įvykusios treniruotės
                           </button>
                         </div>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-gold/10 text-gold border border-gold/20">

@@ -555,6 +555,10 @@ export default function Grafikas() {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  // Vilnius "today" — used to hide booked names on past days
+  const vilniusTodayISO = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Vilnius", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
   const monthLabel = `${MONTHS_LT[weekStart.getMonth()]} ${weekStart.getFullYear()}`;
   const sameMonth = weekStart.getMonth() === weekEnd.getMonth();
   const rangeLabel = sameMonth
@@ -790,7 +794,7 @@ export default function Grafikas() {
                         </div>
 
                         {/* Booked names */}
-                        {slotBookings.length > 0 && (
+                        {slotBookings.length > 0 && formatDateISO(date) >= vilniusTodayISO && (
                           <ul className="px-3 py-2 space-y-1">
                             {slotBookings.map((b) => {
                               const perm = isPermanentBooking(b);
@@ -811,7 +815,7 @@ export default function Grafikas() {
                                   {perm && <Star className="w-2.5 h-2.5 text-gold fill-gold flex-shrink-0" />}
                                   <span className="truncate">
                                     {b.is_guest
-                                      ? `${b.guest_name ?? "Naujokė"} (naujokė)`
+                                      ? (b.guest_name ?? "Svečias")
                                       : formatBookedName(b.profile_name ?? "—", b.display_name)}
                                     {b.is_individual && (
                                       <span className="ml-1 text-[10px] uppercase tracking-wider text-blush/80">· individuali</span>
@@ -1054,7 +1058,7 @@ export default function Grafikas() {
                     {list.map((b) => (
                       <li key={b.id} className="flex items-center justify-between text-sm border border-gold/10 rounded px-3 py-2">
                         <span className="text-foreground/85">
-                          {b.is_guest ? `${b.guest_name ?? "Naujokė"} (naujokė)` : (b.profile_name ?? "—")}
+                          {b.is_guest ? (b.guest_name ?? "Svečias") : (b.profile_name ?? "—")}
                           {b.is_individual && (
                             <span className="ml-1 text-[10px] uppercase tracking-wider text-blush/80">· individuali</span>
                           )}
@@ -1259,7 +1263,21 @@ export default function Grafikas() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="cs-time">Laikas (HH:MM)</Label>
+              <Label htmlFor="cs-date">Data</Label>
+              <Input
+                id="cs-date"
+                type="date"
+                value={customSlotDialog ? formatDateISO(customSlotDialog.date) : ""}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  // Parse as local date (avoid TZ off-by-one)
+                  const [y, m, d] = e.target.value.split("-").map(Number);
+                  setCustomSlotDialog({ date: new Date(y, m - 1, d) });
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="cs-time">Laikas (HH:MM — įveskite dvitaškį rankomis)</Label>
               <TimeInput id="cs-time" value={customSlotTime} onChange={setCustomSlotTime} autoFocus />
             </div>
             <div>
