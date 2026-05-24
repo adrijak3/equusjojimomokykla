@@ -6,9 +6,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   WEEKDAYS_LT, MONTHS_LT, addDays, dbDayOfWeek, formatDateISO, formatTime,
-  formatBookedName, hoursUntil, startOfWeek,
+  formatBookedName, hoursUntil, startOfWeek, isValidTime,
 } from "@/lib/equus";
 import { WEEKDAYS_LT_SHORT } from "@/lib/equus";
+import { TimeInput } from "@/components/TimeInput";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
