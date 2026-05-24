@@ -790,7 +790,7 @@ export default function Grafikas() {
                         </div>
 
                         {/* Booked names */}
-                        {slotBookings.length > 0 && (
+                        {slotBookings.length > 0 && formatDateISO(date) >= vilniusTodayISO && (
                           <ul className="px-3 py-2 space-y-1">
                             {slotBookings.map((b) => {
                               const perm = isPermanentBooking(b);
