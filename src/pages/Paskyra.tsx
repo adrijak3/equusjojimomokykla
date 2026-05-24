@@ -878,11 +878,11 @@ function SubscriptionCard({ s, effectiveUsed, onMarkPaid, onDelete, onEditLesson
             className="text-3xl font-display text-gradient-gold tabular-nums hover:opacity-80 transition-opacity"
             title="Pakeisti treniruočių skaičių"
           >
-            {s.lessons_used}/{s.lessons_total}
+            {used}/{s.lessons_total}
           </button>
         ) : (
           <span className="text-3xl font-display text-gradient-gold tabular-nums">
-            {s.lessons_used}/{s.lessons_total}
+            {used}/{s.lessons_total}
           </span>
         )}
         {s.paid ? (
