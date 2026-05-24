@@ -686,15 +686,15 @@ function SubsTab() {
                       return (
                       <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-1.5 border-b border-gold/5 last:border-0">
                         <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold">
-                            {s.lessons_used}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
+                          <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold" title="Įvykusios treniruotės / iš viso">
+                            {actual}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
                           </button>
                           {mismatch && (
                             <span
                               className="text-[10px] px-1.5 py-0.5 rounded bg-blush/10 text-blush border border-blush/30 tabular-nums"
-                              title={`Tikras pamokų skaičius prisegtas šiam abonementui: ${actual}. Saugomas: ${s.lessons_used}.`}
+                              title={`Saugomas skaitiklis duomenų bazėje: ${s.lessons_used}`}
                             >
-                              tikras: {actual}
+                              saugoma: {s.lessons_used}
                             </span>
                           )}
                           <button
@@ -703,7 +703,7 @@ function SubsTab() {
                             className="text-[11px] px-1.5 py-0.5 rounded border border-gold/20 text-gold hover:bg-gold/10 inline-flex items-center gap-1"
                             title="Žiūrėti, kurios pamokos įskaičiuotos"
                           >
-                            <ListTree className="w-3 h-3" /> detalės
+                            <ListTree className="w-3 h-3" /> Įvykusios treniruotės
                           </button>
                         </div>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-gold/10 text-gold border border-gold/20">
