@@ -150,11 +150,34 @@ function ScheduleTab() {
     toast.success("Pašalinta"); load();
   };
 
+  const updateCapacity = async (id: string, newCap: number) => {
+    if (!Number.isFinite(newCap) || newCap < 1 || newCap > 50) {
+      toast.error("Talpa turi būti 1–50"); return;
+    }
+    const { error } = await supabase.from("time_slots").update({ max_capacity: newCap }).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Talpa atnaujinta"); load();
+  };
+
+  const updateSlotTime = async (id: string, newT: string) => {
+    if (!isValidTime(newT)) { toast.error("Įveskite laiką formatu HH:MM"); return; }
+    const { error } = await supabase.from("time_slots").update({ slot_time: newT }).eq("id", id);
+    if (error) {
+      toast.error(error.code === "23505" ? "Toks laikas jau egzistuoja" : error.message);
+      return;
+    }
+    toast.success("Laikas atnaujintas"); load();
+  };
+
   return (
     <div>
       <div className="flex justify-end mb-4">
         <Button variant="gold" onClick={() => setOpen(true)}><Plus className="w-4 h-4" /> Naujas laikas</Button>
       </div>
+
+      <p className="text-xs text-muted-foreground mb-3 italic">
+        Talpą ir laiką gali keisti tiesiogiai — paspausk pieštuko ikoną prie reikšmės.
+      </p>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[1,2,3,4,5,6,7].map((dow) => (
@@ -162,18 +185,13 @@ function ScheduleTab() {
             <h3 className="font-display text-lg text-gold mb-3">{WEEKDAYS_LT[dow - 1]}</h3>
             <ul className="space-y-1.5">
               {slots.filter((s) => s.day_of_week === dow).map((s) => (
-                <li key={s.id} className="flex items-center justify-between text-sm px-2 py-1.5 rounded hover:bg-gold/5">
-                  <span className="tabular-nums">
-                    {formatTime(s.slot_time)}
-                    {s.one_off_date && (
-                      <span className="ml-1.5 text-[10px] text-blush">({s.one_off_date})</span>
-                    )}
-                  </span>
-                  <span className="text-xs text-muted-foreground">cap {s.max_capacity}</span>
-                  <button onClick={() => remove(s.id)} className="text-muted-foreground hover:text-destructive">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </li>
+                <SlotRow
+                  key={s.id}
+                  slot={s}
+                  onCapacity={(n) => updateCapacity(s.id, n)}
+                  onTime={(t) => updateSlotTime(s.id, t)}
+                  onRemove={() => remove(s.id)}
+                />
               ))}
               {slots.filter((s) => s.day_of_week === dow).length === 0 && (
                 <li className="text-xs text-muted-foreground italic">Nėra</li>
