@@ -348,6 +348,30 @@ export default function Grafikas() {
     loadData();
   };
 
+  /** Admin: create a one-off custom time slot for a specific date */
+  const adminCreateCustomSlot = async () => {
+    if (!customSlotDialog) return;
+    const t = customSlotTime.trim();
+    if (!isValidTime(t)) { toast.error("Įveskite teisingą laiką (HH:MM)"); return; }
+    if (customSlotCap < 1 || customSlotCap > 30) { toast.error("Talpa 1–30"); return; }
+    setCustomBusy(true);
+    const dateISO = formatDateISO(customSlotDialog.date);
+    const { error } = await supabase.from("time_slots").insert({
+      day_of_week: dbDayOfWeek(customSlotDialog.date),
+      slot_time: `${t}:00`,
+      max_capacity: customSlotCap,
+      active: true,
+      one_off_date: dateISO,
+    } as any);
+    setCustomBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Pridėtas laikas ${t} (${dateISO})`);
+    setCustomSlotDialog(null);
+    setCustomSlotTime("");
+    setCustomSlotCap(6);
+    loadData();
+  };
+
   /** Admin: force-add a user to a slot */
   const adminAddUserToSlot = async (date: Date, time: string, userId: string) => {
     if (!userId) { toast.error("Pasirinkite vartotoją"); return; }
