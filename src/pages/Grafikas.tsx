@@ -1263,7 +1263,21 @@ export default function Grafikas() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="cs-time">Laikas (HH:MM)</Label>
+              <Label htmlFor="cs-date">Data</Label>
+              <Input
+                id="cs-date"
+                type="date"
+                value={customSlotDialog ? formatDateISO(customSlotDialog.date) : ""}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  // Parse as local date (avoid TZ off-by-one)
+                  const [y, m, d] = e.target.value.split("-").map(Number);
+                  setCustomSlotDialog({ date: new Date(y, m - 1, d) });
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="cs-time">Laikas (HH:MM — įveskite dvitaškį rankomis)</Label>
               <TimeInput id="cs-time" value={customSlotTime} onChange={setCustomSlotTime} autoFocus />
             </div>
             <div>
