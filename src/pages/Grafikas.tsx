@@ -555,6 +555,10 @@ export default function Grafikas() {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  // Vilnius "today" — used to hide booked names on past days
+  const vilniusTodayISO = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Vilnius", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
   const monthLabel = `${MONTHS_LT[weekStart.getMonth()]} ${weekStart.getFullYear()}`;
   const sameMonth = weekStart.getMonth() === weekEnd.getMonth();
   const rangeLabel = sameMonth
