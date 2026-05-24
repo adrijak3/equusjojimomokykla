@@ -185,19 +185,21 @@ export default function Paskyra() {
   useEffect(() => {
     if (!subDialog || !acting) return;
     (async () => {
+      // Include today's bookings too — admin/user chooses whether today counts
       const { data } = await supabase
         .from("bookings")
         .select("id, slot_date, slot_time, status, counts_in_subscription, subscription_id")
         .eq("user_id", acting)
         .is("subscription_id", null)
-        .lt("slot_date", formatDateISO(new Date()))
+        .lte("slot_date", formatDateISO(new Date()))
         .neq("status", "cancelled")
+        .gte("slot_date", newSubDate)
         .order("slot_date", { ascending: false })
         .limit(30);
       setUnattributedPast((data ?? []) as any);
       setAttributeIds(new Set());
     })();
-  }, [subDialog, acting]);
+  }, [subDialog, acting, newSubDate]);
 
   const addSubscription = async () => {
     if (!user || !acting) return;
