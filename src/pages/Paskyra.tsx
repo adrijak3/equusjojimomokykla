@@ -1,0 +1,868 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { calculateSubPriceByType, dbDayOfWeek, expiryFromPurchase, formatDateISO, formatTime, LESSON_TYPE_LABEL, MONTHS_LT_NOM, WEEKDAYS_LT, type LessonType } from "@/lib/equus";
+import { CalendarDays, Clock, CheckCircle2, XCircle, Plus, MessageSquare, Star, Trash2, Settings, KeyRound, User as UserIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import { FloralAccent } from "@/components/Decorations";
+
+interface Booking {
+  id: string;
+  slot_date: string;
+  slot_time: string;
+  status: string;
+  counts_in_subscription: boolean;
+  horse_name?: string | null;
+}
+interface Subscription {
+  id: string;
+  lessons_total: number;
+  lessons_used: number;
+  sickness_credits: number;
+  price: number;
+  purchase_date: string;
+  expires_at: string;
+  paid: boolean;
+  lesson_type?: string;
+}
+interface PermanentSlot {
+  id: string;
+  day_of_week: number;
+  slot_time: string;
+}
+interface PendingSickReq {
+  id: string;
+  booking_id: string;
+  document_url: string | null;
+  document_deadline: string | null;
+  slot_date?: string;
+  slot_time?: string;
+}
+interface AvailableSlot {
+  id: string;
+  day_of_week: number;
+  slot_time: string;
+}
+
+export default function Paskyra() {
+  const { user, profile, refreshProfile, activeProfileId, activeProfileName, linkedProfiles } = useAuth();
+  const acting = activeProfileId ?? user?.id ?? null;
+  const isLinked = !!user && acting !== user.id;
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [subs, setSubs] = useState<Subscription[]>([]);
+  const [messages, setMessages] = useState<{ id: string; body: string; created_at: string; read_by_admin: boolean; from_admin: boolean; parent_id: string | null; read_by_user: boolean }[]>([]);
+  const [permanents, setPermanents] = useState<PermanentSlot[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
+  const [sickReqs, setSickReqs] = useState<PendingSickReq[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Add subscription dialog
+  const [subDialog, setSubDialog] = useState(false);
+  const [newSubLessons, setNewSubLessons] = useState(8);
+  const [newSubDate, setNewSubDate] = useState(formatDateISO(new Date()));
+  const [newSubPaid, setNewSubPaid] = useState(false);
+  const [newSubType, setNewSubType] = useState<LessonType>("sportine");
+  const [newSubAlreadyUsed, setNewSubAlreadyUsed] = useState(0);
+  /** Past bookings without a subscription (offered to attribute when buying) */
+  const [unattributedPast, setUnattributedPast] = useState<Booking[]>([]);
+  const [attributeIds, setAttributeIds] = useState<Set<string>>(new Set());
+
+
+
+  // Message
+  const [msgBody, setMsgBody] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const load = async () => {
+    if (!user || !acting) return;
+    setLoading(true);
+    // Auto-process past lessons (Vilnius TZ) so subscription counters are fresh
+    try { await supabase.functions.invoke("process-lessons"); } catch { /* non-fatal */ }
+    const [b, s, m, p, ts] = await Promise.all([
+      supabase.from("bookings").select("*").eq("user_id", acting).order("slot_date").order("slot_time"),
+      supabase.from("subscriptions").select("*").eq("user_id", acting).order("purchase_date", { ascending: false }),
+      supabase.from("messages").select("*").eq("user_id", user.id).order("created_at", { ascending: true }).limit(200),
+      supabase.from("permanent_slots").select("*").eq("user_id", acting).order("day_of_week").order("slot_time"),
+      supabase.from("time_slots").select("id, day_of_week, slot_time").eq("active", true).order("day_of_week").order("slot_time"),
+    ]);
+    // attach horse names from horse_assignments
+    const bs = (b.data ?? []) as any[];
+    if (bs.length) {
+      const ids = bs.map((x) => x.id);
+      const { data: ha } = await supabase
+        .from("horse_assignments")
+        .select("booking_id, horse_id, slot_date, slot_time")
+        .in("booking_id", ids);
+      const horseIds = Array.from(new Set((ha ?? []).map((x: any) => x.horse_id)));
+      let horseMap: Record<string, string> = {};
+      if (horseIds.length) {
+        const { data: hs } = await supabase.from("horses").select("id, name").in("id", horseIds);
+        horseMap = Object.fromEntries((hs ?? []).map((h: any) => [h.id, h.name]));
+      }
+      const haMap: Record<string, string> = {};
+      (ha ?? []).forEach((x: any) => { if (x.booking_id) haMap[x.booking_id] = horseMap[x.horse_id]; });
+      setBookings(bs.map((x) => ({ ...x, horse_name: haMap[x.id] ?? null })));
+    } else {
+      setBookings([]);
+    }
+    setSubs(s.data ?? []);
+    setMessages(m.data ?? []);
+    setPermanents(p.data ?? []);
+    setAvailableSlots(ts.data ?? []);
+
+    // Load pending sickness cancellations awaiting / with documents
+    const { data: sr } = await supabase
+      .from("cancellation_requests")
+      .select("id, booking_id, document_url, document_deadline, status, sickness, bookings(slot_date, slot_time)")
+      .eq("user_id", acting)
+      .eq("sickness", true)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setSickReqs((sr ?? []).map((r: any) => ({
+      id: r.id, booking_id: r.booking_id,
+      document_url: r.document_url, document_deadline: r.document_deadline,
+      slot_date: r.bookings?.slot_date, slot_time: r.bookings?.slot_time,
+    })));
+
+    setLoading(false);
+  };
+  const uploadSickDoc = async (req: PendingSickReq, file: File) => {
+    if (!user) return;
+    const ext = file.name.split(".").pop() || "bin";
+    const path = `${user.id}/${req.booking_id}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("cancellation-docs").upload(path, file);
+    if (upErr) { toast.error(upErr.message); return; }
+    const { error } = await supabase.from("cancellation_requests")
+      .update({ document_url: path, document_uploaded_at: new Date().toISOString() })
+      .eq("id", req.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Pažyma įkelta");
+    load();
+  };
+
+
+  // Mark received admin replies as read once user opens the page
+  useEffect(() => {
+    if (!user) return;
+    const unread = messages.filter((m) => m.from_admin && !m.read_by_user).map((m) => m.id);
+    if (unread.length > 0) {
+      supabase.from("messages").update({ read_by_user: true }).in("id", unread);
+    }
+  }, [messages, user]);
+
+  useEffect(() => { load(); }, [user, acting]);
+
+  const now = new Date();
+  const future = bookings.filter((b) => b.status === "active" && new Date(`${b.slot_date}T${b.slot_time}`) >= now);
+  const past = bookings.filter((b) => new Date(`${b.slot_date}T${b.slot_time}`) < now);
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const monthBookings = past.filter((b) => {
+    const d = new Date(`${b.slot_date}T${b.slot_time}`);
+    return d >= monthStart && d < monthEnd;
+  });
+  const monthAttended = monthBookings.filter((b) => b.status === "active" || b.status === "completed");
+
+  // Lifetime stats
+  const totalAttended = past.filter(
+    (b) => (b.status === "active" || b.status === "completed") && b.counts_in_subscription === true,
+  ).length;
+  const totalCancelled = bookings.filter((b) => b.status === "cancelled").length;
+
+  const effLessons = newSubType === "vienkartine" ? 1 : newSubLessons;
+  const newSubPrice = calculateSubPriceByType(effLessons, newSubType);
+
+  // When subscription dialog opens, pre-load past bookings that aren't tied to any subscription.
+  useEffect(() => {
+    if (!subDialog || !acting) return;
+    (async () => {
+      const { data } = await supabase
+        .from("bookings")
+        .select("id, slot_date, slot_time, status, counts_in_subscription, subscription_id")
+        .eq("user_id", acting)
+        .is("subscription_id", null)
+        .lt("slot_date", formatDateISO(new Date()))
+        .neq("status", "cancelled")
+        .order("slot_date", { ascending: false })
+        .limit(30);
+      setUnattributedPast((data ?? []) as any);
+      setAttributeIds(new Set());
+    })();
+  }, [subDialog, acting]);
+
+  const addSubscription = async () => {
+    if (!user || !acting) return;
+    if (effLessons < 1 || effLessons > 50) { toast.error("Pamokų skaičius 1–50"); return; }
+    const fromAttribution = attributeIds.size;
+    const totalUsed = newSubAlreadyUsed + fromAttribution;
+    if (totalUsed > effLessons) {
+      toast.error(`Panaudota (${totalUsed}) negali viršyti pamokų sk. (${effLessons})`);
+      return;
+    }
+    const { data: ins, error } = await supabase.from("subscriptions").insert({
+      user_id: acting,
+      lessons_total: effLessons,
+      lessons_used: totalUsed,
+      lesson_type: newSubType,
+      price: newSubPrice,
+      purchase_date: newSubDate,
+      expires_at: expiryFromPurchase(newSubDate),
+      paid: newSubPaid,
+    } as any).select("id").maybeSingle();
+    if (error) { toast.error(error.message); return; }
+    // Attribute selected past bookings to this new subscription
+    if (ins?.id && attributeIds.size > 0) {
+      await supabase.from("bookings")
+        .update({ subscription_id: ins.id, counts_in_subscription: true } as any)
+        .in("id", Array.from(attributeIds));
+    }
+    toast.success("Abonementas pridėtas");
+    setSubDialog(false);
+    setNewSubLessons(8);
+    setNewSubPaid(false);
+    setNewSubType("sportine");
+    setNewSubAlreadyUsed(0);
+    setAttributeIds(new Set());
+    load();
+  };
+
+  const sendMessage = async () => {
+    if (!user || msgBody.trim().length < 1) return;
+    setSending(true);
+    const { error } = await supabase.from("messages").insert({ user_id: user.id, body: msgBody.trim() });
+    setSending(false);
+    if (error) { toast.error(error.message); return; }
+    setMsgBody("");
+    toast.success("Žinutė išsiųsta");
+    load();
+  };
+
+  // Permanent slots — users can only view & remove (admin adds them)
+
+  const removePermanent = async (id: string) => {
+    const slot = permanents.find((p) => p.id === id);
+    if (!slot) return;
+    if (!confirm("Pašalinti nuolatinį laiką? Visos jūsų būsimos pamokos šiuo laiku bus atšauktos.")) return;
+    const { error } = await supabase.from("permanent_slots").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    // Cancel all future active bookings for this user that fall on this weekday + time
+    const todayISO = formatDateISO(new Date());
+    const { data: future } = await supabase
+      .from("bookings")
+      .select("id, slot_date")
+      .eq("user_id", acting!)
+      .eq("slot_time", slot.slot_time)
+      .gte("slot_date", todayISO)
+      .eq("status", "active");
+    const ids = (future ?? [])
+      .filter((b) => dbDayOfWeek(new Date(`${b.slot_date}T00:00:00`)) === slot.day_of_week)
+      .map((b) => b.id);
+    if (ids.length > 0) {
+      await supabase.from("bookings").update({ status: "cancelled" }).in("id", ids);
+    }
+    toast.success("Pašalinta. Būsimos pamokos atšauktos.");
+    load();
+  };
+
+  const markSubPaid = async (subId: string) => {
+    if (!confirm("Pažymėti šį abonementą kaip APMOKĖTĄ?")) return;
+    const { error } = await supabase.from("subscriptions").update({ paid: true }).eq("id", subId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Pažymėta apmokėta. Administracija patvirtins.");
+    load();
+  };
+
+  const deleteSub = async (subId: string) => {
+    if (!confirm("Ar tikrai norite ištrinti šį abonementą? Šio veiksmo atšaukti negalėsite.")) return;
+    const { error } = await supabase.from("subscriptions").delete().eq("id", subId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Abonementas ištrintas");
+    load();
+  };
+
+  const editSubLessons = async (s: Subscription) => {
+    const txt = prompt(
+      `Pakeisti treniruočių skaičių abonemente.\n\nDabar: ${s.lessons_used}/${s.lessons_total}\nGalima sumažinti tik tiek, kad būtų ne mažiau už jau panaudotų (${s.lessons_used}).`,
+      String(s.lessons_total),
+    );
+    if (txt === null) return;
+    const n = parseInt(txt);
+    if (!Number.isFinite(n) || n < 1 || n > 100) { toast.error("Įveskite skaičių 1–100"); return; }
+    if (n < s.lessons_used) { toast.error(`Negalima mažiau už jau panaudotų (${s.lessons_used})`); return; }
+    const { error } = await supabase.from("subscriptions").update({ lessons_total: n }).eq("id", s.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Atnaujinta");
+    load();
+  };
+
+  const monthLabel = MONTHS_LT_NOM[now.getMonth()];
+
+  return (
+    <div className="container max-w-4xl py-8 sm:py-14 relative">
+      <FloralAccent className="absolute -top-4 -right-12 hidden md:block" size={140} delay={0.3} rotate={25} />
+
+      <motion.header
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+        className="mb-8"
+      >
+        <p className="text-xs uppercase tracking-[0.25em] text-gold/70 mb-2">Sveiki sugrįžę</p>
+        <h1 className="text-4xl sm:text-5xl font-display text-gradient-gold">{activeProfileName || profile?.full_name || "—"}</h1>
+        {isLinked && (
+          <p className="text-xs text-blush/80 mt-1 italic">
+            Aktyvus profilis: {activeProfileName} · perjungti meniu
+          </p>
+        )}
+        <div className="gold-divider mt-4 max-w-[120px]" />
+      </motion.header>
+
+      <Tabs defaultValue="lessons">
+        <TabsList className="grid grid-cols-5 w-full bg-background/50 mb-6 h-auto gap-1 p-1">
+          <TabsTrigger value="lessons" className="text-[11px] sm:text-sm px-1 sm:px-3 whitespace-nowrap">Treniruotės</TabsTrigger>
+          <TabsTrigger value="subs" className="text-[11px] sm:text-sm px-1 sm:px-3 whitespace-nowrap">Abonementai</TabsTrigger>
+          <TabsTrigger value="permanent" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
+            <Star className="w-3.5 h-3.5" /><span className="hidden sm:inline">Nuolatiniai</span>
+          </TabsTrigger>
+          <TabsTrigger value="messages" className="text-[11px] sm:text-sm px-1 sm:px-3 whitespace-nowrap">Žinutės</TabsTrigger>
+          <TabsTrigger value="settings" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
+            <Settings className="w-3.5 h-3.5" /><span className="hidden sm:inline">Nuostatos</span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* LESSONS */}
+        <TabsContent value="lessons" className="space-y-6">
+          {sickReqs.filter((r) => !r.document_url && r.document_deadline).length > 0 && (
+            <Section title="Ligos pažymos" icon={<XCircle className="w-4 h-4" />}>
+              <ul className="divide-y divide-gold/5">
+                {sickReqs.filter((r) => !r.document_url && r.document_deadline).map((r) => {
+                  const overdue = r.document_deadline && r.document_deadline < formatDateISO(new Date());
+                  return (
+                    <li key={r.id} className="px-5 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-medium">
+                          Pamoka {r.slot_date} {r.slot_time?.slice(0, 5)}
+                        </div>
+                        <div className={cn("text-xs", overdue ? "text-destructive" : "text-muted-foreground")}>
+                          {overdue
+                            ? "Terminas pasibaigęs — laukia administracijos sprendimo"
+                            : `Įkelti pažymą iki: ${r.document_deadline}`}
+                        </div>
+                      </div>
+                      {!overdue && (
+                        <Input
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,application/pdf,image/*"
+                          className="max-w-xs"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadSickDoc(r, f);
+                          }}
+                        />
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Section>
+          )}
+
+          {/* Lifetime stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gradient-card border border-gold/15 rounded-lg p-5 text-center shadow-elegant">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Iš viso treniruočių</div>
+              <div className="font-display text-4xl text-gradient-gold tabular-nums mt-1">{totalAttended}</div>
+            </div>
+            <div className="bg-gradient-card border border-gold/15 rounded-lg p-5 text-center shadow-elegant">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Atšauktų</div>
+              <div className="font-display text-4xl text-blush tabular-nums mt-1">{totalCancelled}</div>
+            </div>
+          </div>
+
+          <Section title="Užsirašytos treniruotės" icon={<CalendarDays className="w-4 h-4" />}>
+            {future.length === 0 ? (
+              <Empty text="Nėra suplanuotų treniruočių" />
+            ) : (
+              <ul className="divide-y divide-gold/5">
+                {future.map((b) => <BookingRow key={b.id} b={b} />)}
+              </ul>
+            )}
+          </Section>
+
+          <Section title={`${monthLabel} lankomumas`} icon={<CheckCircle2 className="w-4 h-4" />}>
+            <div className="flex items-baseline gap-3 px-5 py-3">
+              <span className="font-display text-4xl text-gradient-gold tabular-nums">{monthAttended.length}</span>
+              <span className="text-sm text-muted-foreground">treniruočių šį mėnesį</span>
+            </div>
+            {monthBookings.length > 0 && (
+              <ul className="divide-y divide-gold/5 border-t border-gold/10">
+                {monthBookings.map((b) => <BookingRow key={b.id} b={b} past />)}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="Visos praėjusios" icon={<Clock className="w-4 h-4" />}>
+            {past.length === 0 ? (
+              <Empty text="Dar nebuvo treniruočių" />
+            ) : (
+              <ul className="divide-y divide-gold/5 max-h-96 overflow-auto">
+                {past.slice().reverse().map((b) => <BookingRow key={b.id} b={b} past />)}
+              </ul>
+            )}
+          </Section>
+        </TabsContent>
+
+        {/* SUBSCRIPTIONS */}
+        <TabsContent value="subs" className="space-y-4">
+          <div className="flex justify-end">
+            <Button variant="gold" onClick={() => setSubDialog(true)}>
+              <Plus className="w-4 h-4" /> Pridėti abonementą
+            </Button>
+          </div>
+          {subs.length === 0 ? (
+            <Empty text="Nėra abonementų" />
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-4">
+              {subs.map((s) => {
+                const remaining = s.lessons_total - s.lessons_used;
+                const expDays = Math.ceil((new Date(s.expires_at).getTime() - Date.now()) / 86400000);
+                const lowRemaining = remaining <= 1 || (expDays <= 7 && expDays >= 0);
+                return (
+                  <div key={s.id} className="relative">
+                    {lowRemaining && (
+                      <div className="absolute -top-2 left-3 z-10 px-2 py-0.5 rounded-full bg-destructive/80 text-destructive-foreground text-[10px] uppercase tracking-wider font-semibold animate-pulse">
+                        {remaining <= 1 ? "Liko ≤1 treniruotė" : `Baigiasi po ${expDays} d.`}
+                      </div>
+                    )}
+                    <SubscriptionCard s={s} onMarkPaid={markSubPaid} onDelete={deleteSub} onEditLessons={editSubLessons} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* MESSAGES */}
+        <TabsContent value="messages" className="space-y-4">
+          <div className="bg-gradient-card border border-gold/15 rounded-lg p-5">
+            <Label htmlFor="msg" className="flex items-center gap-2 mb-2">
+              <MessageSquare className="w-4 h-4 text-gold" /> Žinutė administracijai
+            </Label>
+            <Textarea
+              id="msg"
+              value={msgBody}
+              onChange={(e) => setMsgBody(e.target.value)}
+              maxLength={2000}
+              rows={4}
+              placeholder="Rašykite čia..."
+            />
+            <div className="flex justify-end mt-3">
+              <Button variant="gold" disabled={sending || !msgBody.trim()} onClick={sendMessage}>
+                Siųsti
+              </Button>
+            </div>
+          </div>
+          {messages.length > 0 && (
+            <Section title="Pokalbis su administracija">
+              <p className="px-5 pt-3 text-[11px] text-muted-foreground italic">
+                Pokalbiai automatiškai ištrinami po 3 dienų nuo paskutinės žinutės.
+              </p>
+              <ul className="divide-y divide-gold/5 max-h-[500px] overflow-auto mt-2">
+                {messages.map((m) => (
+                  <li
+                    key={m.id}
+                    className={cn(
+                      "px-5 py-3",
+                      m.from_admin && "bg-gold/5",
+                    )}
+                  >
+                    <div className="flex items-baseline justify-between gap-2 mb-1">
+                      <span className={cn("text-xs uppercase tracking-wide", m.from_admin ? "text-gold" : "text-muted-foreground")}>
+                        {m.from_admin ? "✦ Administracija" : "Jūs"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{new Date(m.created_at).toLocaleString("lt-LT")}</span>
+                    </div>
+                    <div className="text-sm whitespace-pre-wrap">{m.body}</div>
+                    {!m.from_admin && (
+                      <div className="text-[11px] text-muted-foreground mt-1">
+                        {m.read_by_admin ? "✓ Perskaityta" : "Išsiųsta"}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+        </TabsContent>
+
+        {/* PERMANENT SLOTS */}
+        <TabsContent value="permanent" className="space-y-4">
+          <PermanentSlotsSection
+            permanents={permanents}
+            onRemove={removePermanent}
+          />
+        </TabsContent>
+
+        {/* SETTINGS */}
+        <TabsContent value="settings" className="space-y-6">
+          <ProfileSettings onSaved={refreshProfile} />
+          <PasswordChange />
+        </TabsContent>
+      </Tabs>
+
+      {/* Add subscription dialog */}
+      <Dialog open={subDialog} onOpenChange={setSubDialog}>
+        <DialogContent className="bg-gradient-card border-gold/20">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-gradient-gold">Naujas abonementas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="sub-date">Pirkimo data</Label>
+              <Input id="sub-date" type="date" value={newSubDate} onChange={(e) => setNewSubDate(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="sub-type">Tipas</Label>
+              <select id="sub-type" value={newSubType} onChange={(e) => setNewSubType(e.target.value as LessonType)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="sportine">Sportinė</option>
+                <option value="nesportine">Nesportinė</option>
+                <option value="vienkartine">Vienkartinė (1 pamoka)</option>
+              </select>
+            </div>
+            {newSubType !== "vienkartine" && (
+            <div>
+              <Label htmlFor="sub-lessons">Pamokų skaičius</Label>
+              <Input id="sub-lessons" type="number" min={1} max={50} value={newSubLessons}
+                onChange={(e) => setNewSubLessons(parseInt(e.target.value) || 0)} />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Galioja 30 dienų
+              </p>
+            </div>
+            )}
+            <div>
+              <Label htmlFor="sub-used">Jau panaudota treniruočių</Label>
+              <Input
+                id="sub-used"
+                type="number"
+                min={0}
+                max={effLessons}
+                value={newSubAlreadyUsed}
+                onChange={(e) => setNewSubAlreadyUsed(Math.max(0, parseInt(e.target.value) || 0))}
+              />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Jeigu šio abonemento jau buvote panaudoję — įrašykite kiek. Naujam abonementui palikite 0.
+              </p>
+            </div>
+            <div className="flex items-baseline justify-between p-4 rounded-md bg-gold/5 border border-gold/15">
+              <span className="text-sm">Iš viso</span>
+              <span className="text-3xl font-display text-gradient-gold tabular-nums">{newSubPrice} €</span>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={newSubPaid} onChange={(e) => setNewSubPaid(e.target.checked)} className="accent-gold" />
+              Jau apmokėta
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSubDialog(false)}>Atšaukti</Button>
+            <Button variant="gold" onClick={addSubscription}>Pridėti</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/* ───────────── Settings sub-sections ───────────── */
+
+function ProfileSettings({ onSaved }: { onSaved: () => void | Promise<void> }) {
+  const { user, profile } = useAuth();
+  const [name, setName] = useState(profile?.full_name ?? "");
+  const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [displayName, setDisplayName] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setName(profile?.full_name ?? "");
+    setPhone(profile?.phone ?? "");
+  }, [profile]);
+
+  // Load display_name separately (not in AuthContext profile shape)
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle()
+      .then(({ data }) => setDisplayName((data as any)?.display_name ?? ""));
+  }, [user]);
+
+  const save = async () => {
+    if (!user) return;
+    if (name.trim().length < 2) { toast.error("Vardas per trumpas"); return; }
+    setSaving(true);
+    const { error } = await supabase.from("profiles")
+      .update({
+        full_name: name.trim(),
+        phone: phone.trim() || null,
+        display_name: displayName.trim() || null,
+      } as any)
+      .eq("id", user.id);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Išsaugota");
+    await onSaved();
+  };
+
+  return (
+    <Section title="Profilis" icon={<UserIcon className="w-4 h-4" />}>
+      <div className="p-5 space-y-3">
+        <div>
+          <Label htmlFor="pf-name">Vardas ir pavardė</Label>
+          <Input id="pf-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+        </div>
+        <div>
+          <Label htmlFor="pf-display">Vardas tvarkaraštyje</Label>
+          <Input
+            id="pf-display"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            maxLength={40}
+            placeholder="Palikite tuščią — naudosis numatytas"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Numatytas vaizdas: vardas + pirmos 2 pavardės raidės (pvz. „Vardas Pa“). Įrašykite, jei norite kitokio.
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="pf-phone">Telefonas</Label>
+          <Input id="pf-phone" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} />
+          <p className="text-xs text-muted-foreground mt-1">Naudojamas slaptažodžio atstatymui</p>
+        </div>
+        <div className="flex justify-end pt-1">
+          <Button variant="gold" onClick={save} disabled={saving}>{saving ? "Saugoma…" : "Išsaugoti"}</Button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function PermanentSlotsSection({
+  permanents,
+  onRemove,
+}: {
+  permanents: PermanentSlot[];
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <Section title="Nuolatiniai laikai" icon={<Star className="w-4 h-4" />}>
+      <div className="p-5">
+        <p className="text-sm text-muted-foreground mb-4">
+          Nuolatiniai laikai – tai jūsų savaitiniai treniruočių laikai, į kuriuos esate automatiškai užregistruojama kiekvieną savaitę.
+        </p>
+        {permanents.length === 0 ? (
+          <p className="text-sm italic text-muted-foreground py-3">Šiuo metu neturite nuolatinių laikų</p>
+        ) : (
+          <ul className="space-y-2">
+            {permanents.map((p) => (
+              <li key={p.id} className="flex items-center justify-between bg-gold/5 border border-gold/15 rounded-md px-4 py-2.5">
+                <span className="flex items-center gap-2">
+                  <Star className="w-3.5 h-3.5 fill-gold text-gold" />
+                  <span className="font-medium">{WEEKDAYS_LT[p.day_of_week - 1]}</span>
+                  <span className="text-muted-foreground tabular-nums">{formatTime(p.slot_time)}</span>
+                </span>
+                <button
+                  onClick={() => onRemove(p.id)}
+                  className="text-muted-foreground hover:text-destructive transition-colors"
+                  aria-label="Pašalinti"
+                  title="Pašalinti nuolatinį laiką"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function PasswordChange() {
+  const { user, profile } = useAuth();
+  const [phone, setPhone] = useState("");
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!user?.email) return;
+    if (pw.length < 8) { toast.error("Slaptažodis turi būti bent 8 simbolių"); return; }
+    if (pw !== pw2) { toast.error("Slaptažodžiai nesutampa"); return; }
+    if (!phone.trim()) { toast.error("Įveskite telefono numerį"); return; }
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("reset-password-by-phone", {
+      body: { email: user.email, phone: phone.trim(), new_password: pw },
+    });
+    setBusy(false);
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error || error?.message || "Klaida");
+      return;
+    }
+    toast.success("Slaptažodis pakeistas");
+    setPhone(""); setPw(""); setPw2("");
+  };
+
+  return (
+    <Section title="Pakeisti slaptažodį" icon={<KeyRound className="w-4 h-4" />}>
+      <div className="p-5 space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Įveskite savo telefono numerį (turi sutapti su paskyroje nurodytu — <span className="text-foreground/80">{profile?.phone ?? "nenurodytas"}</span>) ir naują slaptažodį.
+        </p>
+        <div>
+          <Label htmlFor="pc-phone">Telefonas patvirtinimui</Label>
+          <Input id="pc-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="pc-pw">Naujas slaptažodis</Label>
+            <Input id="pc-pw" type="password" value={pw} onChange={(e) => setPw(e.target.value)} minLength={8} />
+          </div>
+          <div>
+            <Label htmlFor="pc-pw2">Pakartokite</Label>
+            <Input id="pc-pw2" type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} minLength={8} />
+          </div>
+        </div>
+        <div className="flex justify-end pt-1">
+          <Button variant="gold" onClick={submit} disabled={busy}>{busy ? "Keičiama…" : "Pakeisti"}</Button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+/* ───────────── Shared bits ───────────── */
+
+function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="bg-gradient-card border border-gold/15 rounded-lg overflow-hidden shadow-elegant"
+    >
+      <h2 className="px-5 py-3 border-b border-gold/10 font-display text-lg text-gold flex items-center gap-2">
+        {icon} {title}
+      </h2>
+      {children}
+    </motion.section>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return <p className="px-5 py-8 text-center text-sm text-muted-foreground italic">{text}</p>;
+}
+
+function BookingRow({ b, past }: { b: Booking; past?: boolean }) {
+  const d = new Date(`${b.slot_date}T${b.slot_time}`);
+  return (
+    <li className="flex items-center justify-between px-5 py-3 text-sm">
+      <div>
+        <div className="font-medium">
+          {d.toLocaleDateString("lt-LT", { weekday: "long", day: "numeric", month: "long" })}
+        </div>
+        <div className="text-muted-foreground tabular-nums">
+          {formatTime(b.slot_time)}
+          {b.horse_name && (
+            <span className="ml-2 text-xs text-gold/80 font-mono">({b.horse_name})</span>
+          )}
+        </div>
+      </div>
+      <div>
+        {b.status === "cancelled" && <span className="text-xs px-2 py-0.5 rounded bg-destructive/15 text-destructive">Atšaukta</span>}
+        {past && (b.status === "completed" || b.status === "active") && (
+          <span className="text-xs text-gold/80">
+            ✓ {b.counts_in_subscription === false ? "Įvyko (nesiskaičiuoja)" : "Įvyko"}
+          </span>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function SubscriptionCard({ s, onMarkPaid, onDelete, onEditLessons }: { s: Subscription; onMarkPaid?: (id: string) => void; onDelete?: (id: string) => void; onEditLessons?: (s: Subscription) => void }) {
+  const remaining = s.lessons_total - s.lessons_used;
+  const expired = new Date(s.expires_at) < new Date();
+  const empty = remaining <= 0;
+  return (
+    <div className={cn(
+      "p-5 rounded-lg border bg-gradient-card transition-all",
+      empty ? "border-destructive/40 shadow-[0_0_30px_-8px_hsl(var(--destructive)/0.3)]" : "border-gold/15",
+      expired && "opacity-60",
+    )}>
+      <div className="flex items-baseline justify-between mb-3">
+        {onEditLessons ? (
+          <button
+            type="button"
+            onClick={() => onEditLessons(s)}
+            className="text-3xl font-display text-gradient-gold tabular-nums hover:opacity-80 transition-opacity"
+            title="Pakeisti treniruočių skaičių"
+          >
+            {s.lessons_used}/{s.lessons_total}
+          </button>
+        ) : (
+          <span className="text-3xl font-display text-gradient-gold tabular-nums">
+            {s.lessons_used}/{s.lessons_total}
+          </span>
+        )}
+        {s.paid ? (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-gold/15 text-gold border border-gold/30 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" /> Apmokėta
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onMarkPaid?.(s.id)}
+            className="text-xs px-2 py-0.5 rounded-full bg-blush/15 text-blush border border-blush/30 flex items-center gap-1 hover:bg-blush/25 transition-colors cursor-pointer"
+            title="Spauskite, kad pažymėtumėte kaip apmokėtą"
+          >
+            <XCircle className="w-3 h-3" /> Neapmokėta · pažymėti
+          </button>
+        )}
+      </div>
+      <div className="text-sm space-y-1 text-muted-foreground">
+        {s.lesson_type && (
+          <div>Tipas: <span className="text-foreground">{LESSON_TYPE_LABEL[(s.lesson_type as LessonType)] ?? s.lesson_type}</span></div>
+        )}
+        <div>Pirkta: <span className="text-foreground">{s.purchase_date}</span></div>
+        <div>Galioja iki: <span className={cn("text-foreground", expired && "text-destructive")}>{s.expires_at}</span></div>
+        <div>Suma: <span className="text-foreground tabular-nums">{Number(s.price).toFixed(2)} €</span></div>
+        {s.sickness_credits > 0 && (
+          <div className="text-blush">+{s.sickness_credits} (liga)</div>
+        )}
+      </div>
+      {empty && !expired && (
+        <p className="mt-3 text-xs text-destructive font-medium">Pamokos baigėsi — pridėkite naują abonementą</p>
+      )}
+      {onDelete && (
+        <div className="mt-4 pt-3 border-t border-gold/10 flex justify-end">
+          <button
+            type="button"
+            onClick={() => onDelete(s.id)}
+            className="text-xs text-muted-foreground hover:text-destructive transition-colors inline-flex items-center gap-1"
+            title="Ištrinti šį abonementą"
+          >
+            <Trash2 className="w-3 h-3" /> Ištrinti
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
