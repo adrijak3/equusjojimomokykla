@@ -565,6 +565,43 @@ export default function Paskyra() {
                 Jeigu šio abonemento jau buvote panaudoję — įrašykite kiek. Naujam abonementui palikite 0.
               </p>
             </div>
+            {unattributedPast.length > 0 && (
+              <div className="border border-gold/15 rounded-md p-3 bg-background/30">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Įtraukti į šį abonementą (nuo pirkimo dienos)
+                </Label>
+                <p className="text-[11px] text-muted-foreground mt-1 mb-2">
+                  Pažymėkite jau įvykusias treniruotes (įsk. šiandienos), kurios turėtų skaičiuotis šiame abonemente.
+                </p>
+                <ul className="space-y-1 max-h-44 overflow-auto">
+                  {unattributedPast.map((b) => {
+                    const checked = attributeIds.has(b.id);
+                    const isToday = b.slot_date === formatDateISO(new Date());
+                    return (
+                      <li key={b.id}>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer rounded px-2 py-1 hover:bg-gold/5">
+                          <input
+                            type="checkbox"
+                            className="accent-gold"
+                            checked={checked}
+                            onChange={(e) => {
+                              setAttributeIds((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(b.id);
+                                else next.delete(b.id);
+                                return next;
+                              });
+                            }}
+                          />
+                          <span className="tabular-nums">{b.slot_date} · {formatTime(b.slot_time)}</span>
+                          {isToday && <span className="text-[10px] uppercase tracking-wider text-gold">šiandien</span>}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
             <div className="flex items-baseline justify-between p-4 rounded-md bg-gold/5 border border-gold/15">
               <span className="text-sm">Iš viso</span>
               <span className="text-3xl font-display text-gradient-gold tabular-nums">{newSubPrice} €</span>
