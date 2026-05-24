@@ -692,8 +692,10 @@ export default function Grafikas() {
                         title="Pridėti naują laiką šiai dienai"
                       >
                         <Plus className="w-3 h-3" /> Naujas laikas
-                    </div>
+                      </button>
+                    )}
                   </div>
+
 
                   {/* Weekend banners — Saturday only */}
                   {dow === 6 && (
