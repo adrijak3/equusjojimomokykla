@@ -71,7 +71,11 @@ Deno.serve(async (req) => {
       .order("purchase_date", { ascending: true });
 
     const usableSub = (subs ?? []).find(
-      (s) => s.lessons_used < s.lessons_total && s.expires_at >= b.slot_date,
+      (s) =>
+        s.lessons_used < s.lessons_total &&
+        s.expires_at >= b.slot_date &&
+        // NEW: subscription counts only from purchase day onwards
+        s.purchase_date <= b.slot_date,
     );
 
     if (usableSub) {

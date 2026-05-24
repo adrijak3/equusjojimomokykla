@@ -6,9 +6,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   WEEKDAYS_LT, MONTHS_LT, addDays, dbDayOfWeek, formatDateISO, formatTime,
-  formatBookedName, hoursUntil, startOfWeek,
+  formatBookedName, hoursUntil, startOfWeek, isValidTime,
 } from "@/lib/equus";
 import { WEEKDAYS_LT_SHORT } from "@/lib/equus";
+import { TimeInput } from "@/components/TimeInput";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -113,6 +114,12 @@ export default function Grafikas() {
   const [newNoteLabel, setNewNoteLabel] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
 
+  // Admin: custom one-off time slot
+  const [customSlotDialog, setCustomSlotDialog] = useState<{ date: Date } | null>(null);
+  const [customSlotTime, setCustomSlotTime] = useState("");
+  const [customSlotCap, setCustomSlotCap] = useState(6);
+  const [customBusy, setCustomBusy] = useState(false);
+
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const weekEnd = days[6];
 
@@ -127,7 +134,7 @@ export default function Grafikas() {
     const [slotsRes, bookingsRes, overridesRes, waitingRes, permRes] = await Promise.all([
       supabase.from("time_slots").select("*").eq("active", true).order("slot_time"),
       supabase.from("bookings").select("id, user_id, slot_date, slot_time, status, is_guest, guest_name, is_individual")
-        .gte("slot_date", startISO).lte("slot_date", endISO).eq("status", "active"),
+        .gte("slot_date", startISO).lte("slot_date", endISO).in("status", ["active", "completed"]),
       supabase.from("slot_overrides").select("*").gte("slot_date", startISO).lte("slot_date", endISO),
       supabase.from("waiting_list").select("*").gte("slot_date", startISO).lte("slot_date", endISO),
       supabase.from("permanent_slots").select("user_id, day_of_week, slot_time"),
@@ -338,6 +345,30 @@ export default function Grafikas() {
       .eq("slot_date", dateISO).eq("slot_time", time);
     if (error) { toast.error(error.message); return; }
     toast.success("Papildoma vieta pašalinta");
+    loadData();
+  };
+
+  /** Admin: create a one-off custom time slot for a specific date */
+  const adminCreateCustomSlot = async () => {
+    if (!customSlotDialog) return;
+    const t = customSlotTime.trim();
+    if (!isValidTime(t)) { toast.error("Įveskite teisingą laiką (HH:MM)"); return; }
+    if (customSlotCap < 1 || customSlotCap > 30) { toast.error("Talpa 1–30"); return; }
+    setCustomBusy(true);
+    const dateISO = formatDateISO(customSlotDialog.date);
+    const { error } = await supabase.from("time_slots").insert({
+      day_of_week: dbDayOfWeek(customSlotDialog.date),
+      slot_time: `${t}:00`,
+      max_capacity: customSlotCap,
+      active: true,
+      one_off_date: dateISO,
+    } as any);
+    setCustomBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Pridėtas laikas ${t} (${dateISO})`);
+    setCustomSlotDialog(null);
+    setCustomSlotTime("");
+    setCustomSlotCap(6);
     loadData();
   };
 
@@ -653,7 +684,18 @@ export default function Grafikas() {
                         )}
                       </button>
                     </div>
+                    {isAdmin && !isPast && (
+                      <button
+                        type="button"
+                        onClick={() => { setCustomSlotDialog({ date }); setCustomSlotTime(""); setCustomSlotCap(6); }}
+                        className="mt-2 w-full inline-flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider text-gold/80 hover:text-gold border border-dashed border-gold/30 hover:border-gold/60 rounded px-1.5 py-1 transition-colors"
+                        title="Pridėti naują laiką šiai dienai"
+                      >
+                        <Plus className="w-3 h-3" /> Naujas laikas
+                      </button>
+                    )}
                   </div>
+
 
                   {/* Weekend banners — Saturday only */}
                   {dow === 6 && (
@@ -1197,6 +1239,46 @@ export default function Grafikas() {
 
           <DialogFooter>
             <Button variant="ghost" onClick={() => setNotesDialog(null)}>Uždaryti</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin: custom one-off time slot */}
+      <Dialog open={!!customSlotDialog} onOpenChange={(o) => !o && setCustomSlotDialog(null)}>
+        <DialogContent className="bg-gradient-card border-gold/20">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-gradient-gold flex items-center gap-2">
+              <Plus className="w-5 h-5 text-gold" /> Naujas laikas
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              {customSlotDialog && customSlotDialog.date.toLocaleDateString("lt-LT", { weekday: "long", day: "numeric", month: "long" })}
+              <span className="block text-[11px] italic mt-1">
+                Vienkartinis laikas — bus rodomas tik šią dieną.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="cs-time">Laikas (HH:MM)</Label>
+              <TimeInput id="cs-time" value={customSlotTime} onChange={setCustomSlotTime} autoFocus />
+            </div>
+            <div>
+              <Label htmlFor="cs-cap">Talpa</Label>
+              <Input
+                id="cs-cap"
+                type="number"
+                min={1}
+                max={30}
+                value={customSlotCap}
+                onChange={(e) => setCustomSlotCap(parseInt(e.target.value) || 1)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCustomSlotDialog(null)}>Atšaukti</Button>
+            <Button variant="gold" onClick={adminCreateCustomSlot} disabled={customBusy}>
+              {customBusy ? "Pridedama…" : "Pridėti"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
