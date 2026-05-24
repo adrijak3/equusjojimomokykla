@@ -811,7 +811,7 @@ export default function Grafikas() {
                                   {perm && <Star className="w-2.5 h-2.5 text-gold fill-gold flex-shrink-0" />}
                                   <span className="truncate">
                                     {b.is_guest
-                                      ? `${b.guest_name ?? "Naujokė"} (naujokė)`
+                                      ? (b.guest_name ?? "Svečias")
                                       : formatBookedName(b.profile_name ?? "—", b.display_name)}
                                     {b.is_individual && (
                                       <span className="ml-1 text-[10px] uppercase tracking-wider text-blush/80">· individuali</span>
