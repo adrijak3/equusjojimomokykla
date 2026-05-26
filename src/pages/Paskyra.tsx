@@ -477,7 +477,7 @@ export default function Paskyra() {
                         {remaining <= 1 ? "Liko ≤1 treniruotė" : `Baigiasi po ${expDays} d.`}
                       </div>
                     )}
-                    <SubscriptionCard s={s} effectiveUsed={actualUsed} onMarkPaid={markSubPaid} onDelete={deleteSub} onEditLessons={editSubLessons} />
+                    <SubscriptionCard s={s} effectiveUsed={actualUsed} onMarkPaid={markSubPaid} onDelete={undefined} onEditLessons={undefined} />
                   </div>
                 );
               })}
