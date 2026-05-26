@@ -333,14 +333,20 @@ export default function Paskyra() {
 
       <Tabs defaultValue="lessons">
         <TabsList className="grid grid-cols-5 w-full bg-background/50 mb-6 h-auto gap-1 p-1">
-          <TabsTrigger value="lessons" className="text-[11px] sm:text-sm px-1 sm:px-3 whitespace-nowrap">Treniruotės</TabsTrigger>
-          <TabsTrigger value="subs" className="text-[11px] sm:text-sm px-1 sm:px-3 whitespace-nowrap">Abonementai</TabsTrigger>
-          <TabsTrigger value="permanent" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-            <Star className="w-3.5 h-3.5" /><span className="hidden sm:inline">Nuolatiniai</span>
+          <TabsTrigger value="lessons" aria-label="Treniruotės" title="Treniruotės" className="py-2">
+            <Horse size={18} />
           </TabsTrigger>
-          <TabsTrigger value="messages" className="text-[11px] sm:text-sm px-1 sm:px-3 whitespace-nowrap">Žinutės</TabsTrigger>
-          <TabsTrigger value="settings" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-            <Settings className="w-3.5 h-3.5" /><span className="hidden sm:inline">Nuostatos</span>
+          <TabsTrigger value="subs" aria-label="Abonementai" title="Abonementai" className="py-2">
+            <Wallet className="w-[18px] h-[18px]" />
+          </TabsTrigger>
+          <TabsTrigger value="permanent" aria-label="Nuolatiniai" title="Nuolatiniai laikai" className="py-2">
+            <Star className="w-[18px] h-[18px]" />
+          </TabsTrigger>
+          <TabsTrigger value="messages" aria-label="Žinutės" title="Žinutės" className="py-2">
+            <Inbox className="w-[18px] h-[18px]" />
+          </TabsTrigger>
+          <TabsTrigger value="settings" aria-label="Nuostatos" title="Nuostatos" className="py-2">
+            <Settings className="w-[18px] h-[18px]" />
           </TabsTrigger>
         </TabsList>
 
