@@ -682,21 +682,12 @@ function SubsTab() {
                   <ul className="space-y-2">
                     {us.map((s) => {
                       const actual = usageMap[s.id] ?? 0;
-                      const mismatch = actual !== s.lessons_used;
                       return (
                       <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-1.5 border-b border-gold/5 last:border-0">
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold" title="Įvykusios treniruotės / iš viso">
                             {actual}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
                           </button>
-                          {mismatch && (
-                            <span
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-blush/10 text-blush border border-blush/30 tabular-nums"
-                              title={`Saugomas skaitiklis duomenų bazėje: ${s.lessons_used}`}
-                            >
-                              saugoma: {s.lessons_used}
-                            </span>
-                          )}
                           <button
                             type="button"
                             onClick={() => setDetailSub(s)}
@@ -833,10 +824,78 @@ function SubDetailDialog({
         </DialogHeader>
         <div className="space-y-3 text-sm">
           <div className="rounded-md bg-gold/5 border border-gold/15 px-3 py-2 tabular-nums">
-            <div>Saugomas: <span className="text-gold">{sub.lessons_used}/{sub.lessons_total}</span></div>
-            <div>Tikras (iš pamokų sąrašo): <span className="text-gold">{counted.length}/{sub.lessons_total}</span></div>
+            <div className="text-base">Įvykusios treniruotės: <span className="text-gold">{counted.length}/{sub.lessons_total}</span></div>
             <div className="text-xs text-muted-foreground mt-1">{sub.purchase_date} → {sub.expires_at}</div>
+            {counted.length !== sub.lessons_used && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const { error } = await supabase.from("subscriptions")
+                    .update({ lessons_used: counted.length }).eq("id", sub.id);
+                  if (error) { toast.error(error.message); return; }
+                  toast.success("Sinchronizuota"); onChanged();
+                }}
+                className="mt-2 text-[11px] px-2 py-1 rounded border border-blush/40 text-blush hover:bg-blush/10"
+                title={`Vidinis skaitiklis: ${sub.lessons_used} — paspauskite, kad sutaptų su tikru`}
+              >
+                Sinchronizuoti vidinį skaitiklį ({sub.lessons_used} → {counted.length})
+              </button>
+            )}
           </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                // Auto-attach this user's completed bookings from the current month that have no subscription
+                const now = new Date();
+                const y = now.getFullYear();
+                const m = String(now.getMonth() + 1).padStart(2, "0");
+                const monthStart = `${y}-${m}-01`;
+                const monthEnd = `${y}-${m}-31`;
+                const remaining = sub.lessons_total - counted.length;
+                if (remaining <= 0) { toast.error("Abonementas pilnas"); return; }
+                const { data: bks } = await supabase.from("bookings")
+                  .select("id")
+                  .eq("user_id", sub.user_id)
+                  .eq("status", "completed")
+                  .neq("counts_in_subscription", false)
+                  .is("subscription_id", null)
+                  .gte("slot_date", monthStart)
+                  .lte("slot_date", monthEnd)
+                  .order("slot_date", { ascending: true })
+                  .limit(remaining);
+                const ids = (bks ?? []).map((b: any) => b.id);
+                if (ids.length === 0) { toast.message("Šio mėnesio neįskaičiuotų nėra"); return; }
+                const { error } = await supabase.from("bookings")
+                  .update({ subscription_id: sub.id } as any).in("id", ids);
+                if (error) { toast.error(error.message); return; }
+                await supabase.from("subscriptions")
+                  .update({ lessons_used: counted.length + ids.length }).eq("id", sub.id);
+                toast.success(`Priskirta ${ids.length}`); load(); onChanged();
+              }}
+              className="text-xs px-2 py-1 rounded border border-gold/30 text-gold hover:bg-gold/10"
+            >
+              Auto-priskirti šio mėnesio įvykusias
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const txt = prompt(`Kiek pamokų jau panaudota? (0–${sub.lessons_total})`, String(sub.lessons_used));
+                if (txt === null) return;
+                const n = parseInt(txt);
+                if (!Number.isFinite(n) || n < 0 || n > sub.lessons_total) { toast.error("Neteisingas skaičius"); return; }
+                const { error } = await supabase.from("subscriptions")
+                  .update({ lessons_used: n }).eq("id", sub.id);
+                if (error) { toast.error(error.message); return; }
+                toast.success("Atnaujinta"); onChanged();
+              }}
+              className="text-xs px-2 py-1 rounded border border-gold/30 text-gold hover:bg-gold/10"
+            >
+              Pridėti rankiniu būdu
+            </button>
+          </div>
+
 
           {loading ? (
             <p className="text-muted-foreground italic">Kraunama…</p>
