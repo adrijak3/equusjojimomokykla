@@ -682,21 +682,12 @@ function SubsTab() {
                   <ul className="space-y-2">
                     {us.map((s) => {
                       const actual = usageMap[s.id] ?? 0;
-                      const mismatch = actual !== s.lessons_used;
                       return (
                       <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-1.5 border-b border-gold/5 last:border-0">
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={() => editLessons(s)} className="tabular-nums hover:text-gold" title="Įvykusios treniruotės / iš viso">
                             {actual}/{s.lessons_total} · {Number(s.price).toFixed(0)}€
                           </button>
-                          {mismatch && (
-                            <span
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-blush/10 text-blush border border-blush/30 tabular-nums"
-                              title={`Saugomas skaitiklis duomenų bazėje: ${s.lessons_used}`}
-                            >
-                              saugoma: {s.lessons_used}
-                            </span>
-                          )}
                           <button
                             type="button"
                             onClick={() => setDetailSub(s)}
